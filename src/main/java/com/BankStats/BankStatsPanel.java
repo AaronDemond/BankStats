@@ -1,12 +1,9 @@
 package com.BankStats;
-
 import net.runelite.client.ui.PluginPanel;
-
 import java.util.Map;
 import java.util.HashMap;
 import java.util.Set;
 import java.util.LinkedHashSet;
-
 import javax.swing.table.TableCellRenderer;
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
@@ -23,7 +20,6 @@ import java.util.Comparator;
 import javax.swing.SwingConstants;
 import javax.swing.RowFilter;
 import java.util.regex.Pattern;
-
 import javax.swing.JFileChooser;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import java.io.BufferedWriter;
@@ -33,7 +29,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-
 import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.nio.file.Paths;
@@ -44,10 +39,10 @@ public class BankStatsPanel extends PluginPanel
 {
     private final JButton updateBtn = new JButton("Update from bank");
     private final JButton exportBtn = new JButton("Export CSV");
-    private final JButton saveNamedSnapBtn = new JButton("Save Named Snapshot");
+    private final JButton saveNamedSnapBtn = new JButton("Save");
     private final JLabel status = new JLabel("Click update while bank is open.");
     private final JTable table;
-    private final JButton importNamedSnapBtn = new JButton("Import Named Snapshot");
+    private final JButton importNamedSnapBtn = new JButton("Import");
     private static final int ROW_SIDE_PAD = 6;
     private final DefaultTableModel model;
     private final JTextField searchField = new JTextField(24);
@@ -62,6 +57,11 @@ public class BankStatsPanel extends PluginPanel
     private final Runnable onUpdate;
     private final JButton distancesPopupBtn = new JButton("Price Data Popup Window");
     private final JButton gainLossPopupBtn = new JButton("GainLoss");
+    // track the most recently imported snapshot file
+    private java.nio.file.Path lastSnapshotPath = null;
+
+    // new button (under “Save Named Snapshot”)
+    private final JButton refreshBtn = new JButton("Refresh");
     // Singleton dialog refs so we never open duplicates
     private JDialog distancesDlg;
     private JDialog gainLossDlg;
@@ -128,6 +128,8 @@ public class BankStatsPanel extends PluginPanel
     private static Color nudge(Color c, int delta) {
         return new Color(clamp(c.getRed()+delta), clamp(c.getGreen()+delta), clamp(c.getBlue()+delta));
     }
+
+
     private static int rowHeightFor(JTable t) {
         FontMetrics fm = t.getFontMetrics(t.getFont());
         return Math.max(18, fm.getHeight() + 4); // compact, but readable
@@ -181,8 +183,6 @@ public class BankStatsPanel extends PluginPanel
 
     };
 
-    private final JButton snapshotBtn = new JButton("Snapshot");
-    private final JButton importBtn   = new JButton("Import Default");
     private final JButton comparePopupBtn = new JButton("Compare Data Popup Window");
 
     private JDialog myItemsDlg; // popup for the snapshot table
@@ -215,25 +215,25 @@ public class BankStatsPanel extends PluginPanel
     }
 
 
-    // Read ~/.bank-prices/snapshot.csv, fetch current highs, compute (snapshot - current), fill table
-    private void importSnapshotAndCompute()
-    {
-        java.nio.file.Path file = Paths.get(System.getProperty("user.home"), ".bank-prices", "snapshot.csv");
-        if (!Files.exists(file)) {
-            setStatus("No snapshot found. Click Snapshot first.");
+
+    /** Core importer used by default import and refresh. */
+    private void importSnapshotFromPath(java.nio.file.Path file) {
+        if (file == null || !java.nio.file.Files.exists(file)) {
+            setStatus("Snapshot not found. Click Import Default or Import Named Snapshot first.");
             return;
         }
+
+        // Remember this as the most recently used snapshot file
+        lastSnapshotPath = file;
 
         // 1) Read id -> (name, snapHigh)
         java.util.Map<Integer, String> idToName = new java.util.HashMap<>();
         java.util.Map<Integer, Integer> idToSnap = new java.util.HashMap<>();
         java.util.Set<Integer> ids = new java.util.LinkedHashSet<>();
 
-        try (java.io.BufferedReader br = Files.newBufferedReader(file, StandardCharsets.UTF_8))
-        {
+        try (java.io.BufferedReader br = java.nio.file.Files.newBufferedReader(file, java.nio.charset.StandardCharsets.UTF_8)) {
             String line = br.readLine(); // header
-            while ((line = br.readLine()) != null)
-            {
+            while ((line = br.readLine()) != null) {
                 String[] parts = line.split(",", 3); // id,name,currentHigh
                 if (parts.length < 3) continue;
                 try {
@@ -247,8 +247,7 @@ public class BankStatsPanel extends PluginPanel
                     // skip bad rows
                 }
             }
-        }
-        catch (IOException ex) {
+        } catch (IOException ex) {
             setStatus("Import failed: " + ex.getMessage());
             return;
         }
@@ -260,68 +259,65 @@ public class BankStatsPanel extends PluginPanel
 
         setStatus("Importing " + ids.size() + " items...");
 
-        // 2) Ask the plugin to fetch latest for all ids (bulk, async)
+        // 2) Fetch latest highs in bulk (async), then compute & paint
         plugin.fetchLatestForIdsAsync(ids, latestMap -> {
-    snapshotModel.setRowCount(0);
+            snapshotModel.setRowCount(0);
 
-    // quantity map from latest bank snapshot (if available)
-    java.util.Map<Integer, Integer> idToQty = new java.util.HashMap<>();
-    if (backingRows != null) {
-        for (BankStatsPlugin.Row r : backingRows) {
-            if (r != null && r.qty != null && r.qty > 0) idToQty.put(r.id, r.qty);
-        }
-    }
-
-    long grand = 0L;
-
-    for (int id : ids) {
-        Integer snap = idToSnap.get(id);
-        Integer cur  = latestMap.get(id);
-        if (snap == null || cur == null) continue;
-
-        // per-unit Δ
-        int perUnitDelta = cur - snap;
-
-        // % change
-        Double pct = (snap != 0) ? ((cur - snap) / (double) snap) : null;
-
-        // net Δ (qty * perUnitDelta)
-        Integer qty = idToQty.get(id);
-        Integer net = null;
-        if (qty != null) {
-            long v = (long) qty * (long) perUnitDelta;
-            if      (v > Integer.MAX_VALUE) net = Integer.MAX_VALUE;
-            else if (v < Integer.MIN_VALUE) net = Integer.MIN_VALUE;
-            else                             net = (int) v;
-        }
-
-        if (net != null) grand += net;
-
-        String name = idToName.getOrDefault(id, "Item " + id);
-        // col0 Item, col1 Net (qty*Δ), col2 % change, col3 Total (left null; renderer will show only at top row)
-        snapshotModel.addRow(new Object[]{ name, net, pct, null });
-    }
-
-    // clamp and store grand total for renderer
-    if      (grand > Integer.MAX_VALUE) snapshotGrandTotal = Integer.MAX_VALUE;
-    else if (grand < Integer.MIN_VALUE) snapshotGrandTotal = Integer.MIN_VALUE;
-    else                                snapshotGrandTotal = (int) grand;
-
-    setStatus("Import complete: " + snapshotModel.getRowCount() + " items compared.");
-
-    // repaint tables so the “Total Net” single cell updates immediately
-    snapshotTable.repaint();
-    if (myItemsDlg != null && myItemsDlg.isShowing()) myItemsDlg.repaint();
-            // Update the colored Net chip now that totals are computed
-            if (revealNetBoxOnNextCompute || netSummaryBox.isVisible()) {
-                refreshNetSummaryBox();
+            // quantity map from latest bank snapshot (if available)
+            java.util.Map<Integer, Integer> idToQty = new java.util.HashMap<>();
+            if (backingRows != null) {
+                for (com.BankStats.BankStatsPlugin.Row r : backingRows) {
+                    if (r != null && r.qty != null && r.qty > 0) idToQty.put(r.id, r.qty);
+                }
             }
+
+            long grand = 0L;
+
+            for (int id : ids) {
+                Integer snap = idToSnap.get(id);
+                Integer cur  = latestMap.get(id);
+                if (snap == null || cur == null) continue;
+
+                int perUnitDelta = cur - snap;                         // Δ per unit
+                Double pct = (snap != 0) ? ((cur - snap) / (double) snap) : null;
+
+                Integer qty = idToQty.get(id);
+                Integer net = null;
+                if (qty != null) {
+                    long v = (long) qty * (long) perUnitDelta;
+                    if      (v > Integer.MAX_VALUE) net = Integer.MAX_VALUE;
+                    else if (v < Integer.MIN_VALUE) net = Integer.MIN_VALUE;
+                    else                             net = (int) v;
+                }
+                if (net != null) grand += net;
+
+                String name = idToName.getOrDefault(id, "Item " + id);
+                snapshotModel.addRow(new Object[]{ name, net, pct, null });
+            }
+
+            // clamp & store grand total (for the Total Net cell and net chip)
+            if      (grand > Integer.MAX_VALUE) snapshotGrandTotal = Integer.MAX_VALUE;
+            else if (grand < Integer.MIN_VALUE) snapshotGrandTotal = Integer.MIN_VALUE;
+            else                                snapshotGrandTotal = (int) grand;
+
+            setStatus("Import complete: " + snapshotModel.getRowCount() + " items compared.");
+
+            // repaint tables immediately
+            snapshotTable.repaint();
+            if (myItemsDlg != null && myItemsDlg.isShowing()) myItemsDlg.repaint();
+
+            // Always refresh the colored net chip after imports / refreshes
+            refreshNetSummaryBox();
         });
-
-
-
     }
-
+    /** Re-run compare using the most recently imported snapshot file. */
+    private void refreshFromLastSnapshot() {
+        if (lastSnapshotPath == null || !java.nio.file.Files.exists(lastSnapshotPath)) {
+            setStatus("No snapshot imported yet. Click Import Default (or Import Named Snapshot) first.");
+            return;
+        }
+        importSnapshotFromPath(lastSnapshotPath);
+    }
     // Open a file picker in ~/.bank-prices and import the chosen snapshot
     private void importNamedSnapshotAndComputeViaChooser()
     {
@@ -339,7 +335,8 @@ public class BankStatsPanel extends PluginPanel
         }
 
         Path file = fc.getSelectedFile().toPath();
-        importSnapshotFileAndCompute(file);
+        lastSnapshotPath = file;                // remember this as “last used” snapshot
+        importSnapshotFromPath(file);           // use the unified importer so Refresh works
     }
 
     // Core loader used by the chooser (same format as your Snap files)
@@ -1132,15 +1129,17 @@ public class BankStatsPanel extends PluginPanel
         JPanel importNamedRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         importNamedRow.setAlignmentX(Component.LEFT_ALIGNMENT);
         importNamedSnapBtn.setMargin(tight);
+        saveNamedSnapBtn.setMargin(tight);
+        refreshBtn.setMargin(tight);
+
         importNamedRow.add(importNamedSnapBtn);
+        importNamedRow.add(saveNamedSnapBtn);
+        importNamedRow.add(refreshBtn);
 
         tablesStack.add(Box.createVerticalStrut(6));   // same vertical gap as elsewhere
         tablesStack.add(importNamedRow);
 
-// keep your existing gap before the controls block
 
-
-        tablesStack.add(Box.createVerticalStrut(6)); // then your controls/buttons continue
 
 
         /* ── Controls: new buttons row (Snapshot/Import/My Items) on top,
@@ -1150,6 +1149,14 @@ public class BankStatsPanel extends PluginPanel
         controls.setAlignmentX(Component.LEFT_ALIGNMENT); // <-- add this line
         //tablesStack.add(Box.createVerticalStrut(8));
         tablesStack.add(controls);
+
+
+// keep your existing gap before the controls block
+
+
+        tablesStack.add(Box.createVerticalStrut(6)); // then your controls/buttons continue
+
+
 
 // wrap the stack in a scroll pane (one vertical scrollbar for all tables)
         JScrollPane centerScroll = new JScrollPane(
@@ -1169,57 +1176,14 @@ public class BankStatsPanel extends PluginPanel
 // Shared button insets for compact look
         final Insets tight = new Insets(2, 8, 2, 8);
 
-// Row 1: Snap / Import / Compare — left aligned
-        JPanel snapBtnRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        snapBtnRow.setAlignmentX(Component.LEFT_ALIGNMENT);
-        snapBtnRow.setBorder(BorderFactory.createEmptyBorder(0, 0, 6, 0));
-        snapshotBtn.setMargin(tight);
-        importBtn.setMargin(tight);
-        snapBtnRow.add(snapshotBtn);
-        snapBtnRow.add(importBtn);
 
 
-        controls.add(snapBtnRow);
-
-        JPanel saveRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        saveRow.setAlignmentX(Component.LEFT_ALIGNMENT);
-        saveRow.setBorder(BorderFactory.createEmptyBorder(0, 0, 4, 0));
-        saveNamedSnapBtn.setMargin(tight);
-        saveRow.add(saveNamedSnapBtn);
-
-        controls.add(saveRow);
 
 // Add controls under the two tables
         tablesStack.add(controls);
 
 // (leave your existing listeners for distancesPopupBtn/gainLossPopupBtn as-is)
 // Wire empty handlers for the new buttons for now — just to verify UI placement
-        snapshotBtn.addActionListener(e -> {
-            // Build the full path we’re about to overwrite for a clear warning
-            String defaultPath = java.nio.file.Paths
-                    .get(System.getProperty("user.home"), ".bank-prices", "snapshot.csv")
-                    .toString();
-
-            int choice = JOptionPane.showConfirmDialog(
-                    SwingUtilities.getWindowAncestor(this),
-                    "Are you sure you wish to overwrite your default snapshot?\n\n" +
-                            "This will replace:\n" + defaultPath,
-                    "Overwrite default snapshot?",
-                    JOptionPane.YES_NO_OPTION,
-                    JOptionPane.WARNING_MESSAGE
-            );
-
-            if (choice == JOptionPane.YES_OPTION) {
-                writeSnapshotToDisk();
-            } else {
-                setStatus("Snapshot canceled.");
-            }
-        });
-        importBtn.addActionListener(e -> {
-            // also update the colored Net box after the import finishes
-            revealNetBoxOnNextCompute = true;
-            importSnapshotAndCompute();
-        });
         comparePopupBtn.addActionListener(e -> {
             // Just open the popup with whatever is already in the snapshot model.
             if (snapshotModel.getRowCount() == 0) {
@@ -1270,6 +1234,8 @@ public class BankStatsPanel extends PluginPanel
             revealNetBoxOnNextCompute = true;            // auto-show/update the Net chip
             importNamedSnapshotAndComputeViaChooser();   // pick a file and fill the table
         });
+
+        refreshBtn.addActionListener(e -> refreshFromLastSnapshot());
     }
 
     public void setUpdating(boolean updating)
@@ -1328,7 +1294,7 @@ public class BankStatsPanel extends PluginPanel
     {
         // If already open, just refresh and focus
         if (myItemsDlg != null && myItemsDlg.isShowing()) {
-            importSnapshotAndCompute();  // ← refresh while the dialog is open
+            refreshFromLastSnapshot();
             myItemsDlg.toFront();
             myItemsDlg.requestFocus();
             return;
