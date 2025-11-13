@@ -12,7 +12,7 @@ Helps track and analyze the price changes of every item in your bank.
 - 🕓 Track prices at any interval you choose - daily, weekly, hourly, Etc.
 - 💾 Stores any number of snapshots locally for later comparison.
 
-## Usage
+## Usage (TL;DR at the bottom)
 
 The plugin works by comparing the current value of 
 your items against a previous *snapshot* taken at 
@@ -20,7 +20,7 @@ an earlier time. At the same time, real time market
 data is provided for each item in your bank, after 
 you update by pressing "Update from bank".
 
-The basic workflow is as follows (TL;DR at the bottom):
+The basic workflow is as follows:
 
 - Open your bank (This is a requirement to sync items).
 - press the "Update from bank" button in the controls section of the sidebar panel.
@@ -40,6 +40,10 @@ The basic workflow is as follows (TL;DR at the bottom):
 2. Import items
 3. Save snapshot or load snapshot. (Save if you want something to reference later, load if you want to compare now). When you load a snapshot the Gain / Loss table is automatically populated.
 4. To repeat step 3, the safest thing to do is re import from your bank. This automatically refreshes the items loaded and their prices.
+
+## Definitions
+
+
 
 ### Notes
 - Uses the official [OSRS Wiki Prices API](https://prices.runescape.wiki)

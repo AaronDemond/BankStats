@@ -276,12 +276,31 @@ public class BankStatsPlugin extends Plugin
                     Double distLow180Pct = null;
                     Double distHigh180Pct = null;
 
+                    // --- NEW variables for the extended columns ---
+                    Integer weekHigh7d = null;
+                    Integer weekLow7d = null;
+                    Integer weekHigh30d = null;
+                    Integer weekLow30d = null;
+                    Integer weekHigh6mo = null;
+                    Integer weekLow6mo = null;
+
                     try
                     {
+                        // Fetch timeseries stats for this item
                         SeriesStats s = fetchWeekStatsWithRetry(fid);
 
-                        weekLow  = s.minLow;
-                        weekHigh = s.maxHigh;
+                        // Use true lows/highs for all visible columns.
+                        // WeekLow/WeekHigh are just the 7-day true extremes.
+                        weekLow  = s.trueLow7  != null ? s.trueLow7  : s.minLow;
+                        weekHigh = s.trueHigh7 != null ? s.trueHigh7 : s.maxHigh;
+
+                        // Extended-period extremes – always absolute highs/lows
+                        weekHigh7d  = s.trueHigh7;   // 7d High
+                        weekLow7d   = s.trueLow7;    // 7d Low
+                        weekHigh30d = s.trueHigh30;  // 30d High
+                        weekLow30d  = s.trueLow30;   // 30d Low
+                        weekHigh6mo = s.trueHigh180; // 6mo High
+                        weekLow6mo  = s.trueLow180;  // 6mo Low
 
                         if (currentHigh != null && s.minMid7 != null && s.minMid7 > 0)
                         {
@@ -318,11 +337,13 @@ public class BankStatsPlugin extends Plugin
                     {
                     }
 
+                    // Skip items with no valid data
                     if (currentHigh == null && weekLow == null && weekHigh == null)
                     {
                         return null;
                     }
 
+                    // --- Build Row with extended historical columns ---
                     return new Row(
                             fid,
                             names.getOrDefault(fid, "Item " + fid),
@@ -330,6 +351,15 @@ public class BankStatsPlugin extends Plugin
                             currentHigh,
                             weekLow,
                             weekHigh,
+
+                            // NEW extended fields
+                            weekHigh7d,  // 7d High
+                            weekLow7d,   // 7d Low
+                            weekHigh30d, // 30d High
+                            weekLow30d,  // 30d Low
+                            weekHigh6mo, // 6mo High
+                            weekLow6mo,  // 6mo Low
+
                             vol7,
                             vol30,
                             distLowPct,
@@ -410,6 +440,7 @@ public class BankStatsPlugin extends Plugin
         }
     }
 
+
     private SeriesStats fetchWeekStats(int id) throws IOException
     {
         Request req = new Request.Builder()
@@ -421,33 +452,104 @@ public class BankStatsPlugin extends Plugin
         {
             if (!resp.isSuccessful() || resp.body() == null)
             {
-                return new SeriesStats(null, null,
-                        Collections.emptyList(), Collections.emptyList(),
-                        null, null, null, null, null, null, null, null);
+                return new SeriesStats(
+                        null, null,                               // minLow, maxHigh
+                        Collections.emptyList(), Collections.emptyList(), // mids7, mids30
+                        null, null,                               // vol7, vol30
+                        null, null,                               // minMid7, maxMid7
+                        null, null,                               // minMid30, maxMid30
+                        null, null,                               // minMid180, maxMid180
+                        null, null,                               // trueLow7, trueHigh7
+                        null, null,                               // trueLow30, trueHigh30
+                        null, null                                // trueLow180, trueHigh180
+                );
             }
+
             JsonObject root = gson.fromJson(resp.body().charStream(), JsonObject.class);
             JsonArray arr = root.getAsJsonArray("data");
             if (arr == null || arr.size() == 0)
             {
-                return new SeriesStats(null, null,
+                return new SeriesStats(
+                        null, null,
                         Collections.emptyList(), Collections.emptyList(),
-                        null, null, null, null, null, null, null, null);
+                        null, null,
+                        null, null,
+                        null, null,
+                        null, null,
+                        null, null,
+                        null, null,
+                        null, null
+                );
             }
 
-            List<Integer> midsAll = new ArrayList<>(arr.size());
+            // Collect raw lows, highs, and midpoints for every day
+            List<Integer> lowsAll  = new ArrayList<>(arr.size());
+            List<Integer> highsAll = new ArrayList<>(arr.size());
+            List<Integer> midsAll  = new ArrayList<>(arr.size());
+
             for (int i = 0; i < arr.size(); i++)
             {
                 JsonObject o = arr.get(i).getAsJsonObject();
-                Integer low = getIntOrNull(o, "avgLowPrice");
+                Integer low  = getIntOrNull(o, "avgLowPrice");
                 Integer high = getIntOrNull(o, "avgHighPrice");
+
+                if (low != null && low > 0)
+                {
+                    lowsAll.add(low);
+                }
+                if (high != null && high > 0)
+                {
+                    highsAll.add(high);
+                }
+
                 Integer mid = midpoint(low, high);
-                if (mid != null && mid > 0) midsAll.add(mid);
+                if (mid != null && mid > 0)
+                {
+                    midsAll.add(mid);
+                }
             }
 
-            List<Integer> mids7 = midsAll.size() <= 7 ? new ArrayList<>(midsAll)
+            // Slice last N days (safe if list is shorter than N)
+            List<Integer> lows7    = lowsAll.size()  <= 7   ? new ArrayList<>(lowsAll)
+                    : new ArrayList<>(lowsAll.subList(lowsAll.size() - 7, lowsAll.size()));
+            List<Integer> highs7   = highsAll.size() <= 7   ? new ArrayList<>(highsAll)
+                    : new ArrayList<>(highsAll.subList(highsAll.size() - 7, highsAll.size()));
+            List<Integer> lows30   = lowsAll.size()  <= 30  ? new ArrayList<>(lowsAll)
+                    : new ArrayList<>(lowsAll.subList(lowsAll.size() - 30, lowsAll.size()));
+            List<Integer> highs30  = highsAll.size() <= 30  ? new ArrayList<>(highsAll)
+                    : new ArrayList<>(highsAll.subList(highsAll.size() - 30, highsAll.size()));
+            List<Integer> lows180  = lowsAll.size()  <= 180 ? new ArrayList<>(lowsAll)
+                    : new ArrayList<>(lowsAll.subList(lowsAll.size() - 180, lowsAll.size()));
+            List<Integer> highs180 = highsAll.size() <= 180 ? new ArrayList<>(highsAll)
+                    : new ArrayList<>(highsAll.subList(highsAll.size() - 180, highsAll.size()));
+
+            // Absolute highs/lows over those windows (not averages)
+            Integer trueLow7   = lows7.isEmpty()   ? null : Collections.min(lows7);
+            Integer trueHigh7  = highs7.isEmpty()  ? null : Collections.max(highs7);
+            Integer trueLow30  = lows30.isEmpty()  ? null : Collections.min(lows30);
+            Integer trueHigh30 = highs30.isEmpty() ? null : Collections.max(highs30);
+            Integer trueLow180 = lows180.isEmpty() ? null : Collections.min(lows180);
+            Integer trueHigh180= highs180.isEmpty()? null : Collections.max(highs180);
+
+            // Use these as the "week low/high" as well (7-day extremes)
+            Integer minLow  = trueLow7;
+            Integer maxHigh = trueHigh7;
+
+            // Midpoint series for volatility / distance stats
+            List<Integer> mids7 = midsAll.size() <= 7  ? new ArrayList<>(midsAll)
                     : new ArrayList<>(midsAll.subList(midsAll.size() - 7, midsAll.size()));
             List<Integer> mids30 = midsAll.size() <= 30 ? new ArrayList<>(midsAll)
                     : new ArrayList<>(midsAll.subList(midsAll.size() - 30, midsAll.size()));
+            List<Integer> mids180 = midsAll.size() <= 180 ? new ArrayList<>(midsAll)
+                    : new ArrayList<>(midsAll.subList(midsAll.size() - 180, midsAll.size()));
+
+            Integer minMid7 = null, maxMid7 = null;
+            for (Integer m : mids7)
+            {
+                if (m == null || m <= 0) continue;
+                minMid7 = (minMid7 == null) ? m : Math.min(minMid7, m);
+                maxMid7 = (maxMid7 == null) ? m : Math.max(maxMid7, m);
+            }
 
             Integer minMid30 = null, maxMid30 = null;
             for (Integer m : mids30)
@@ -457,9 +559,6 @@ public class BankStatsPlugin extends Plugin
                 maxMid30 = (maxMid30 == null) ? m : Math.max(maxMid30, m);
             }
 
-            // ▼▼ 180d (6-month) extrema ▼▼
-            List<Integer> mids180 = midsAll.size() <= 180 ? new ArrayList<>(midsAll)
-                    : new ArrayList<>(midsAll.subList(midsAll.size() - 180, midsAll.size()));
             Integer minMid180 = null, maxMid180 = null;
             for (Integer m : mids180)
             {
@@ -468,35 +567,23 @@ public class BankStatsPlugin extends Plugin
                 maxMid180 = (maxMid180 == null) ? m : Math.max(maxMid180, m);
             }
 
-            int start7 = Math.max(0, arr.size() - 7);
-            Integer minLow = null, maxHigh = null;
-            Integer minMid7 = null, maxMid7 = null;
-
-            for (int i = start7; i < arr.size(); i++)
-            {
-                JsonObject o = arr.get(i).getAsJsonObject();
-
-                Integer low = getIntOrNull(o, "avgLowPrice");
-                Integer high = getIntOrNull(o, "avgHighPrice");
-                if (low != null && low > 0)
-                    minLow = (minLow == null) ? low : Math.min(minLow, low);
-                if (high != null && high > 0)
-                    maxHigh = (maxHigh == null) ? high : Math.max(maxHigh, high);
-
-                Integer mid = midpoint(low, high);
-                if (mid != null && mid > 0)
-                {
-                    minMid7 = (minMid7 == null) ? mid : Math.min(minMid7, mid);
-                    maxMid7 = (maxMid7 == null) ? mid : Math.max(maxMid7, mid);
-                }
-            }
-
-            Double vol7 = volatilityFromMids(mids7);
+            Double vol7  = volatilityFromMids(mids7);
             Double vol30 = volatilityFromMids(mids30);
 
-            return new SeriesStats(minLow, maxHigh, mids7, mids30, vol7, vol30,
-                    minMid7, maxMid7, minMid30, maxMid30,
-                    minMid180, maxMid180);
+            // NOTE:
+            // minLow/maxHigh  -> 7-day true low/high (used for Week Low / Week High)
+            // trueLow*/trueHigh* -> same, but explicitly broken out for 7d/30d/6mo columns
+            return new SeriesStats(
+                    minLow, maxHigh,
+                    mids7, mids30,
+                    vol7, vol30,
+                    minMid7, maxMid7,
+                    minMid30, maxMid30,
+                    minMid180, maxMid180,
+                    trueLow7, trueHigh7,
+                    trueLow30, trueHigh30,
+                    trueLow180, trueHigh180
+            );
         }
     }
 
@@ -605,6 +692,12 @@ public class BankStatsPlugin extends Plugin
         final Integer currentHigh;
         final Integer weekLow;
         final Integer weekHigh;
+        final Integer weekHigh7d;
+        final Integer weekLow7d;
+        final Integer weekHigh30d;
+        final Integer weekLow30d;
+        final Integer weekHigh6mo;
+        final Integer weekLow6mo;
         final Integer gainLoss;
 
         final Double vol7;
@@ -617,6 +710,9 @@ public class BankStatsPlugin extends Plugin
         final Double distTo6moHighPct;
 
         Row(int id, String name, Integer qty, Integer currentHigh, Integer weekLow, Integer weekHigh,
+            Integer weekHigh7d, Integer weekLow7d,
+            Integer weekHigh30d, Integer weekLow30d,
+            Integer weekHigh6mo, Integer weekLow6mo,
             Double vol7, Double vol30,
             Double distTo7LowPct, Double distTo7HighPct,
             Double distTo30LowPct, Double distTo30HighPct,
@@ -628,6 +724,13 @@ public class BankStatsPlugin extends Plugin
             this.currentHigh = currentHigh;
             this.weekLow = weekLow;
             this.weekHigh = weekHigh;
+
+            this.weekHigh7d = weekHigh7d;
+            this.weekLow7d = weekLow7d;
+            this.weekHigh30d = weekHigh30d;
+            this.weekLow30d = weekLow30d;
+            this.weekHigh6mo = weekHigh6mo;
+            this.weekLow6mo = weekLow6mo;
 
             Integer gl = null;
             if (qty != null && qty > 0 && currentHigh != null && weekLow != null && weekHigh != null)
@@ -652,6 +755,7 @@ public class BankStatsPlugin extends Plugin
         }
     }
 
+
     static class SeriesStats
     {
         final Integer minLow;
@@ -672,12 +776,23 @@ public class BankStatsPlugin extends Plugin
         final Integer minMid180;
         final Integer maxMid180;
 
+        // --- NEW: true highs/lows ---
+        final Integer trueLow7;
+        final Integer trueHigh7;
+        final Integer trueLow30;
+        final Integer trueHigh30;
+        final Integer trueLow180;
+        final Integer trueHigh180;
+
         SeriesStats(Integer minLow, Integer maxHigh,
                     List<Integer> mids7, List<Integer> mids30,
                     Double vol7, Double vol30,
                     Integer minMid7, Integer maxMid7,
                     Integer minMid30, Integer maxMid30,
-                    Integer minMid180, Integer maxMid180)
+                    Integer minMid180, Integer maxMid180,
+                    Integer trueLow7, Integer trueHigh7,
+                    Integer trueLow30, Integer trueHigh30,
+                    Integer trueLow180, Integer trueHigh180)
         {
             this.minLow = minLow;
             this.maxHigh = maxHigh;
@@ -691,6 +806,14 @@ public class BankStatsPlugin extends Plugin
             this.maxMid30 = maxMid30;
             this.minMid180 = minMid180;
             this.maxMid180 = maxMid180;
+
+            // --- assign new fields ---
+            this.trueLow7 = trueLow7;
+            this.trueHigh7 = trueHigh7;
+            this.trueLow30 = trueLow30;
+            this.trueHigh30 = trueHigh30;
+            this.trueLow180 = trueLow180;
+            this.trueHigh180 = trueHigh180;
         }
     }
 }

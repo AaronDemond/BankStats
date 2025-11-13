@@ -30,6 +30,10 @@ import java.nio.file.Paths;
 import java.awt.image.BufferedImage;
 import javax.swing.ImageIcon;
 import net.runelite.client.util.ImageUtil;
+import javax.swing.table.DefaultTableCellRenderer;
+import java.text.DecimalFormat;
+import java.text.NumberFormat;
+import java.util.Locale;
 
 public class BankStatsPanel extends PluginPanel
 {
@@ -949,10 +953,24 @@ public class BankStatsPanel extends PluginPanel
 
         this.detailModel = new DefaultTableModel(
                 new Object[]{
-                        "Item", "AvgHighPrice",
-                        "Dist. to 7d Low", "Dist. to 7d High",
-                        "Dist. to 30d Low", "Dist. to 30d High",
-                        "Dist. to 6mo Low", "Dist. to 6mo High"
+                        "Item",
+                        "Qty",
+                        "Current High",
+                        "7d Low",
+                        "7d High",
+                        "30d Low",
+                        "30d High",
+                        "6mo Low",
+                        "6mo High",
+                        "Vol 7d",
+                        "Vol 30d",
+                        "% from 7d Low",
+                        "% below 7d High",
+                        "% from 30d Low",
+                        "% below 30d High",
+                        "% from 6mo Low",
+                        "% below 6mo High"//,
+                        //"Gain / Loss"
                 },
                 0
         ) {
@@ -997,6 +1015,35 @@ public class BankStatsPanel extends PluginPanel
                 return cellTooltip(this, detailModel, viewRow, viewCol, NumberFormat.getIntegerInstance(Locale.US));
             }
         };
+
+
+// --- Formatting for the Price Data table ---
+
+// 1) QTY column -> integer with commas
+        detailTable.getColumnModel()
+                .getColumn(1) // "Qty"
+                .setCellRenderer(new QuantityCellRenderer());
+
+// 2) GP columns -> K / M formatting
+        GpCellRenderer gpRenderer = new GpCellRenderer();
+
+// Indices of GP-valued columns in the Price Data table
+        int[] gpCols = {
+                2, // Current High
+                3, // 7d Low
+                4, // 7d High
+                5, // 30d Low
+                6, // 30d High
+                7, // 6mo Low
+                8, // 6mo High
+        };
+
+        for (int col : gpCols)
+        {
+            detailTable.getColumnModel()
+                    .getColumn(col)
+                    .setCellRenderer(gpRenderer);
+        }
 
         snapshotTable = new JTable(snapshotModel) {
             @Override
@@ -1479,14 +1526,31 @@ public class BankStatsPanel extends PluginPanel
             for (BankStatsPlugin.Row r : rows)
             {
                 detailModel.addRow(new Object[]{
-                        r.name,
-                        r.currentHigh,
-                        r.distTo7LowPct,
-                        r.distTo7HighPct,
-                        r.distTo30LowPct,
-                        r.distTo30HighPct,
-                        r.distTo6moLowPct,
-                        r.distTo6moHighPct
+                        r.name,            // "Item"
+                        r.qty,             // "Qty"
+                        r.currentHigh,     // "Current High"
+
+                        // --- TRUE extremes over each window (from OSRS wiki avgLow/avgHigh) ---
+                        r.weekLow7d,       // "7d Low"   (trueLow7)
+                        r.weekHigh7d,      // "7d High"  (trueHigh7)
+                        r.weekLow30d,      // "30d Low"  (trueLow30)
+                        r.weekHigh30d,     // "30d High" (trueHigh30)
+                        r.weekLow6mo,      // "6mo Low"  (trueLow180)
+                        r.weekHigh6mo,     // "6mo High" (trueHigh180)
+
+                        // Volatility stats
+                        r.vol7,            // "Vol 7d"
+                        r.vol30,           // "Vol 30d"
+
+                        // Distance-from-extreme percentages
+                        r.distTo7LowPct,   // "% from 7d Low"
+                        r.distTo7HighPct,  // "% below 7d High"
+                        r.distTo30LowPct,  // "% from 30d Low"
+                        r.distTo30HighPct, // "% below 30d High"
+                        r.distTo6moLowPct, // "% from 6mo Low"
+                        r.distTo6moHighPct,// "% below 6mo High"
+
+                        //r.gainLoss         // "Gain / Loss"
                 });
             }
         });
@@ -1873,6 +1937,82 @@ public class BankStatsPanel extends PluginPanel
         dlg.setSize(900, 520);
         dlg.setLocationRelativeTo(this);
         dlg.setVisible(true);
+    }
+
+
+    // Formats QTY as an integer with commas (e.g. 12,345)
+    private static class QuantityCellRenderer extends DefaultTableCellRenderer
+    {
+        private final NumberFormat nf = NumberFormat.getIntegerInstance(Locale.US);
+
+        @Override
+        protected void setValue(Object value)
+        {
+            if (value == null)
+            {
+                setText("");
+                return;
+            }
+
+            if (value instanceof Number)
+            {
+                long v = ((Number) value).longValue();
+                setText(nf.format(v));
+            }
+            else
+            {
+                super.setValue(value);
+            }
+        }
+    }
+
+    // Formats GP-like values using K / M notation:
+//  - under 1,000,000 -> "xxxk" (no decimals)
+//  - 1,000,000 or more -> "x.xm" (one decimal)
+    private static class GpCellRenderer extends DefaultTableCellRenderer
+    {
+        private final NumberFormat smallIntFormat =
+                NumberFormat.getIntegerInstance(Locale.US);
+        private final DecimalFormat mFormat = new DecimalFormat("0.0");
+
+        @Override
+        protected void setValue(Object value)
+        {
+            if (value == null)
+            {
+                setText("");
+                return;
+            }
+
+            if (!(value instanceof Number))
+            {
+                super.setValue(value);
+                return;
+            }
+
+            long v = ((Number) value).longValue();
+            long abs = Math.abs(v);
+            String sign = v < 0 ? "-" : "";
+
+            if (abs < 1000)
+            {
+                // Just show the raw number with commas (e.g. 950)
+                setText(sign + smallIntFormat.format(abs));
+            }
+            else if (abs < 1_000_000L)
+            {
+                // Thousands -> K, no decimals (e.g. 465,000 -> 465k)
+                long k = Math.round(abs / 1000.0);
+                setText(sign + k + "k");
+            }
+            else
+            {
+                // Millions -> M, one decimal place (e.g. 1,400,000 -> 1.4m)
+                double m = abs / 1_000_000.0;
+                double rounded = Math.round(m * 10.0) / 10.0;
+                setText(sign + mFormat.format(rounded) + "m");
+            }
+        }
     }
 
 
