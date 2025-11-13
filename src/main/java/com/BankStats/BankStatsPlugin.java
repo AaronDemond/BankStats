@@ -37,6 +37,7 @@ import java.util.LinkedHashSet;
 
 @PluginDescriptor(
         name = "BankStats",
+        //developerPlugin = true,
         description = "Shows bank item names with current and weekly high/low prices. Updates only when you click while bank is open.",
         tags = {"bank", "prices", "panel", "wiki"}
 )
