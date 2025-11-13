@@ -70,6 +70,10 @@ public class BankStatsPanel extends PluginPanel
     private JDialog gainLossDlg;
     final Insets tight = new Insets(2, 8, 2, 8);
 
+
+
+
+
     private static void freezeWidth(JComponent c) {
         Dimension pref = c.getPreferredSize();
         c.setMaximumSize(new Dimension(pref.width, Integer.MAX_VALUE));
@@ -611,21 +615,61 @@ public class BankStatsPanel extends PluginPanel
         return "\"" + doubled + "\"";
     }
 
+
     private static String fmtKM(Integer n)
     {
         if (n == null) return "-";
-        int v = n;
-        int av = Math.abs(v);
 
-        if (av >= 1_000_000)
+        long v  = n;
+        long av = Math.abs(v);
+        String sign = v < 0 ? "-" : "";
+
+        if (av >= 1_000_000L)
         {
-            return (v < 0 ? "-" : "") + (av / 1_000_000) + "m";
+            // Millions -> one decimal place, e.g. 1.4m
+            double m = av / 1_000_000.0;
+            double rounded = Math.round(m * 10.0) / 10.0;
+            return sign + new DecimalFormat("0.0").format(rounded) + "m";
         }
-        if (av >= 1_000)
+        if (av >= 1_000L)
         {
-            return (v < 0 ? "-" : "") + (av / 1_000) + "k";
+            // Thousands -> no decimals, e.g. 465k
+            long k = Math.round(av / 1000.0);
+            return sign + k + "k";
         }
-        return "0k";
+
+        // Under 1000 -> raw number
+        return sign + av;
+    }
+    // Shared tooltip text for the Price Data (detail) table headers.
+// Used both by the main panel table and the popup version.
+    private static String detailHeaderTooltipForColumn(int mCol)
+    {
+        switch (mCol)
+        {
+            case 0:  return "Item name";
+            case 1:  return "Qty of this item in your bank at the time of the last import";
+            case 2:  return "Current high price (per item) from the OSRS Wiki /latest endpoint";
+
+            case 3:  return "True 7-day low: lowest recorded price in the last 7 days";
+            case 4:  return "True 7-day high: highest recorded price in the last 7 days";
+            case 5:  return "True 30-day low: lowest recorded price in the last 30 days";
+            case 6:  return "True 30-day high: highest recorded price in the last 30 days";
+            case 7:  return "True 6-month low: lowest recorded price in the last ~180 days";
+            case 8:  return "True 6-month high: highest recorded price in the last ~180 days";
+
+            case 9:  return "Vol 7d: how much the price has bounced around over the last 7 days";
+            case 10: return "Vol 30d: how much the price has bounced around over the last 30 days";
+
+            case 11: return "% from 7d Low: how far the current price is above the 7-day low";
+            case 12: return "% below 7d High: how far the current price is below the 7-day high";
+            case 13: return "% from 30d Low: how far the current price is above the 30-day low";
+            case 14: return "% below 30d High: how far the current price is below the 30-day high";
+            case 15: return "% from 6mo Low: how far the current price is above the 6-month low";
+            case 16: return "% below 6mo High: how far the current price is below the 6-month high";
+
+            default: return null;
+        }
     }
 
     private static final SimpleDateFormat DATE_FMT = new SimpleDateFormat("yyyy-MM-dd HH:mm");
@@ -772,6 +816,7 @@ public class BankStatsPanel extends PluginPanel
     {
         this.plugin = plugin;
         this.onUpdate = onUpdate;
+
 
         // ===== Initialize all buttons with icons (scaled to 16x16) =====
 
@@ -978,9 +1023,26 @@ public class BankStatsPanel extends PluginPanel
 
             @Override public Class<?> getColumnClass(int columnIndex)
             {
-                if (columnIndex == 0) return String.class;
-                else if (columnIndex == 1) return Integer.class;
-                else return Double.class;
+                switch (columnIndex)
+                {
+                    case 0:  return String.class;   // Item
+                    case 1:  return Integer.class;  // Qty
+                    case 2:  // Current High
+                    case 3:  // 7d Low
+                    case 4:  // 7d High
+                    case 5:  // 30d Low
+                    case 6:  // 30d High
+                    case 7:  // 6mo Low
+                    case 8:  // 6mo High
+                        return Integer.class;
+
+                    case 9:  // Vol 7d
+                    case 10: // Vol 30d
+                        return Double.class;
+
+                    default: // 11–16: all percentage columns
+                        return Double.class;
+                }
             }
         };
 
@@ -1104,72 +1166,55 @@ public class BankStatsPanel extends PluginPanel
         this.detailTable.getColumnModel().getColumn(6).setPreferredWidth(100);
         this.detailTable.getColumnModel().getColumn(7).setPreferredWidth(100);
 
-        DefaultTableCellRenderer detailIntRenderer = new DefaultTableCellRenderer() {
-            @Override protected void setValue(Object value) { setText(fmtKM((Integer) value)); }
-            { setHorizontalAlignment(SwingConstants.RIGHT); setOpaque(true); }
-        };
-        this.detailTable.getColumnModel().getColumn(1).setCellRenderer(detailIntRenderer);
 
-        DefaultTableCellRenderer pctRenderer = new DefaultTableCellRenderer()
+// Percent columns (already stored as Double ratios) -> 0.0% formatting
+        applyRenderer(
+                this.detailTable,
+                new int[]{11, 12, 13, 14, 15, 16},
+                PCT_RENDERER
+        );
+
+        JTableHeader dHdr = new JTableHeader(this.detailTable.getColumnModel())
         {
-            @Override
-            protected void setValue(Object value)
-            {
-                if (value instanceof Double)
-                {
-                    double d = ((Double) value).doubleValue();
-                    setText(new java.text.DecimalFormat("0.0%").format(d));
-                }
-                else
-                {
-                    setText(value == null ? "-" : value.toString());
-                }
-            }
-            {
-                setHorizontalAlignment(SwingConstants.RIGHT);
-            }
-        };
-
-        this.detailTable.getColumnModel().getColumn(2).setCellRenderer(pctRenderer);
-        this.detailTable.getColumnModel().getColumn(3).setCellRenderer(pctRenderer);
-        this.detailTable.getColumnModel().getColumn(4).setCellRenderer(pctRenderer);
-        this.detailTable.getColumnModel().getColumn(5).setCellRenderer(pctRenderer);
-        this.detailTable.getColumnModel().getColumn(6).setCellRenderer(pctRenderer);
-        this.detailTable.getColumnModel().getColumn(7).setCellRenderer(pctRenderer);
-
-        JTableHeader dHdr = new JTableHeader(this.detailTable.getColumnModel()) {
             @Override
             public String getToolTipText(MouseEvent e)
             {
                 int vCol = columnAtPoint(e.getPoint());
                 if (vCol < 0) return null;
-                int mCol = detailTable.convertColumnIndexToModel(vCol);
 
-                switch (mCol) {
-                    case 0: return "Item name";
-                    case 1: return "Current price (high) from /latest";
-                    case 2: return "Dist. to 7d Low = (current − minMid7) / minMid7";
-                    case 3: return "Dist. to 7d High = (maxMid7 − current) / maxMid7";
-                    case 4: return "Dist. to 30d Low = (current − minMid30) / minMid30";
-                    case 5: return "Dist. to 30d High = (maxMid30 − current) / maxMid30";
-                    case 6: return "Dist. to 6mo Low = (current − minMid180) / minMid180";
-                    case 7: return "Dist. to 6mo High = (maxMid180 − current) / maxMid180";
-                    default: return null;
-                }
+                int mCol = detailTable.convertColumnIndexToModel(vCol);
+                return detailHeaderTooltipForColumn(mCol);
             }
         };
-
         this.detailTable.setTableHeader(dHdr);
+
 
         detailSorter = (TableRowSorter<DefaultTableModel>) this.detailTable.getRowSorter();
         if (detailSorter != null) {
-            detailSorter.setComparator(1, Comparator.nullsLast(Integer::compareTo));
-            detailSorter.setComparator(2, Comparator.nullsLast(Double::compare));
-            detailSorter.setComparator(3, Comparator.nullsLast(Double::compare));
-            detailSorter.setComparator(4, Comparator.nullsLast(Double::compare));
-            detailSorter.setComparator(5, Comparator.nullsLast(Double::compare));
-            detailSorter.setComparator(6, Comparator.nullsLast(Double::compare));
-            detailSorter.setComparator(7, Comparator.nullsLast(Double::compare));
+            Comparator<Integer> intCmp = Comparator.nullsLast(Integer::compareTo);
+            Comparator<Double> dblCmp = Comparator.nullsLast(Double::compare);
+
+            // Qty + GP prices
+            detailSorter.setComparator(1, intCmp); // Qty
+            detailSorter.setComparator(2, intCmp); // Current High
+            detailSorter.setComparator(3, intCmp); // 7d Low
+            detailSorter.setComparator(4, intCmp); // 7d High
+            detailSorter.setComparator(5, intCmp); // 30d Low
+            detailSorter.setComparator(6, intCmp); // 30d High
+            detailSorter.setComparator(7, intCmp); // 6mo Low
+            detailSorter.setComparator(8, intCmp); // 6mo High
+
+            // Volatility
+            detailSorter.setComparator(9, dblCmp);  // Vol 7d
+            detailSorter.setComparator(10, dblCmp); // Vol 30d
+
+            // Percent columns
+            detailSorter.setComparator(11, dblCmp);
+            detailSorter.setComparator(12, dblCmp);
+            detailSorter.setComparator(13, dblCmp);
+            detailSorter.setComparator(14, dblCmp);
+            detailSorter.setComparator(15, dblCmp);
+            detailSorter.setComparator(16, dblCmp);
         }
 
         searchField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
@@ -1481,6 +1526,40 @@ public class BankStatsPanel extends PluginPanel
         refreshBtn.addActionListener(e -> refreshFromLastSnapshot());
         deleteSnapsBtn.addActionListener(e -> openDeleteSnapshotsWindow());
 
+
+        JTableHeader mainDetailHeader = new JTableHeader(this.detailTable.getColumnModel()) {
+            @Override
+            public String getToolTipText(MouseEvent e)
+            {
+                int vCol = columnAtPoint(e.getPoint());
+                if (vCol < 0) return null;
+
+                int mCol = detailTable.convertColumnIndexToModel(vCol);
+                switch (mCol)
+                {
+                    case 0:  return "Item name";
+                    case 1:  return "Qty of this item in your bank at the time of the last import";
+                    case 2:  return "Current high price (per item) from the OSRS Wiki /latest endpoint";
+                    case 3:  return "True 7-day low: lowest recorded price in the last 7 days";
+                    case 4:  return "True 7-day high: highest recorded price in the last 7 days";
+                    case 5:  return "True 30-day low: lowest recorded price in the last 30 days";
+                    case 6:  return "True 30-day high: highest recorded price in the last 30 days";
+                    case 7:  return "True 6-month low: lowest recorded price in the last ~180 days";
+                    case 8:  return "True 6-month high: highest recorded price in the last ~180 days";
+                    case 9:  return "Vol 7d: how much the price has bounced around over the last 7 days";
+                    case 10: return "Vol 30d: how much the price has bounced around over the last 30 days";
+
+                    case 11: return "% from 7d Low: how far the current price is above the 7-day low";
+                    case 12: return "% below 7d High: how far the current price is below the 7-day high";
+                    case 13: return "% from 30d Low: how far the current price is above the 30-day low";
+                    case 14: return "% below 30d High: how far the current price is below the 30-day high";
+                    case 15: return "% from 6mo Low: how far the current price is above the 6-month low";
+                    case 16: return "% below 6mo High: how far the current price is below the 6-month high";
+
+                    default: return null;
+                }
+            }
+        };
     }
 
     public void setUpdating(boolean updating)
@@ -1635,27 +1714,20 @@ public class BankStatsPanel extends PluginPanel
             }
         }
 
-        JTableHeader hdr = new JTableHeader(popupTable.getColumnModel()) {
+        JTableHeader hdr = new JTableHeader(popupTable.getColumnModel())
+        {
             @Override
             public String getToolTipText(MouseEvent e)
             {
                 int vCol = columnAtPoint(e.getPoint());
                 if (vCol < 0) return null;
+
                 int mCol = popupTable.convertColumnIndexToModel(vCol);
-                switch (mCol) {
-                    case 0: return "Item name";
-                    case 1: return "Current price (high) from /latest";
-                    case 2: return "Dist. to 7d Low = (current − minMid7) / minMid7";
-                    case 3: return "Dist. to 7d High = (maxMid7 − current) / maxMid7";
-                    case 4: return "Dist. to 30d Low = (current − minMid30) / minMid30";
-                    case 5: return "Dist. to 30d High = (maxMid30 − current) / maxMid30";
-                    case 6: return "Dist. to 6mo Low = (current − minMid180) / minMid180";
-                    case 7: return "Dist. to 6mo High = (maxMid180 − current) / maxMid180";
-                    default: return null;
-                }
+                return detailHeaderTooltipForColumn(mCol);
             }
         };
         popupTable.setTableHeader(hdr);
+
 
         if (distancesDlg != null && distancesDlg.isShowing()) {
             distancesDlg.toFront();
@@ -1944,7 +2016,10 @@ public class BankStatsPanel extends PluginPanel
     private static class QuantityCellRenderer extends DefaultTableCellRenderer
     {
         private final NumberFormat nf = NumberFormat.getIntegerInstance(Locale.US);
-
+        {
+            // RIGHT align quantity
+            setHorizontalAlignment(SwingConstants.RIGHT);
+        }
         @Override
         protected void setValue(Object value)
         {
@@ -1974,6 +2049,11 @@ public class BankStatsPanel extends PluginPanel
         private final NumberFormat smallIntFormat =
                 NumberFormat.getIntegerInstance(Locale.US);
         private final DecimalFormat mFormat = new DecimalFormat("0.0");
+
+        {
+            // RIGHT align all GP values
+            setHorizontalAlignment(SwingConstants.RIGHT);
+        }
 
         @Override
         protected void setValue(Object value)
