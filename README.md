@@ -76,7 +76,14 @@ you update by pressing "Update from bank".
 - <span style="color:#CA9A4A">Percentage Change</span>
     - The per-item price change, expressed as a percentage, for each item imported from your bank since the date at which the currently loaded snapshot was taken.
 
-
+## <span style="color:#5B7C99">Credit</span>
+- Dixit Lakhani_02 for the import icon.
+- Freepik for the refresh icon.
+- Kiranshastry for the delete icon.
+- orvipixel for the gather icon.
+- Muhazdinata for the popup icon.
+- Gregor Cresnar for the money icon.
+- Yogi the Aprelliyanto for the remaining graphical icons.
 
 ### <span style="color:#5B7C99">Notes</span>
 

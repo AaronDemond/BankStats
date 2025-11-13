@@ -1,29 +1,23 @@
 package com.BankStats;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import javax.swing.SwingUtilities;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
-
 import java.util.concurrent.CompletionService;
 import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.Future;
-
 import okhttp3.Dispatcher;
 import java.util.concurrent.TimeUnit;
-
 import com.google.gson.*;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
-
 import javax.inject.Inject;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-
 import net.runelite.api.Client;
 import net.runelite.api.InventoryID;
 import net.runelite.api.Item;
@@ -34,20 +28,15 @@ import net.runelite.client.callback.ClientThread;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
-import net.runelite.client.ui.ClientToolbar;
-import net.runelite.client.ui.NavigationButton;
 import java.awt.image.BufferedImage;
-import javax.swing.SwingUtilities;
 import net.runelite.client.util.ImageUtil;
 import java.util.Collections;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.LinkedHashSet;
 
-
 @PluginDescriptor(
         name = "BankStats",
-        developerPlugin = true,
         description = "Shows bank item names with current and weekly high/low prices. Updates only when you click while bank is open.",
         tags = {"bank", "prices", "panel", "wiki"}
 )
@@ -60,25 +49,17 @@ public class BankStatsPlugin extends Plugin
     @Inject private ClientToolbar clientToolbar;
     @Inject private ItemManager itemManager;
 
-    private com.BankStats.BankStatsPanel pluginPanel;
-
-
-
     private OkHttpClient okHttpClient;
     private AlertManager alertManager;  // Add this line
-
     private NavigationButton navButton;
     private com.BankStats.BankStatsPanel panel;
     public AlertManager getAlertManager() {
         return alertManager;
     }
-
     private final Gson gson = new GsonBuilder().create();
-
     private static final int CONCURRENCY = 24;
     private final ExecutorService executor = Executors.newFixedThreadPool(CONCURRENCY);
-
-    private static final String UA = "BankPricesPanel/1.0 (contact: Charles.Demond@smu.ca)";
+    private static final String UA = "BankStats/1.0 (contact: Charles.Demond@smu.ca)";
     private static final String LATEST_URL = "https://prices.runescape.wiki/api/v1/osrs/latest?id=";
     private static final String TIMESERIES_URL = "https://prices.runescape.wiki/api/v1/osrs/timeseries?timestep=24h&id=";
 
@@ -96,8 +77,6 @@ public class BankStatsPlugin extends Plugin
             SwingUtilities.invokeLater(() -> onDone.accept(result));
         });
     }
-
-
 
     @Override
     protected void startUp() throws Exception
@@ -181,6 +160,12 @@ public class BankStatsPlugin extends Plugin
             navButton = null;
         }
         panel = null;
+
+        executor.shutdownNow();
+        if (okHttpClient != null) {
+            okHttpClient.dispatcher().executorService().shutdownNow();
+            okHttpClient.connectionPool().evictAll();
+        }
     }
 
     private void requestUpdate()
@@ -399,15 +384,12 @@ public class BankStatsPlugin extends Plugin
 
             panel.setTableData(rows);
             panel.setDetailTableData(rows);
-            panel.setTableData(rows);
-            panel.setDetailTableData(rows);
 
 // Add these lines - check alerts with the fetched data
             if (alertManager != null) {
                 alertManager.checkAlerts(rows);
             }
 
-            panel.setStatus("Done. " + rows.size() + " items.");
             panel.setStatus("Done. " + rows.size() + " items.");
         }
         catch (IOException bulkErr)
