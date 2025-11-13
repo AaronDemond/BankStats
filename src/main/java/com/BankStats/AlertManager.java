@@ -1,7 +1,6 @@
 package com.bankstats;
 
-import com.bankstats.BankStatsPlugin;        // ← correct import
-import com.bankstats.BankStatsPlugin.Row;    // ← import the Row inner class
+import com.bankstats.BankStatsPlugin.Row;    // import the Row inner class
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
