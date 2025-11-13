@@ -1334,7 +1334,7 @@ public class BankStatsPanel extends PluginPanel
         CollapsibleSection gainDrop = new CollapsibleSection("Gain / Loss", gainSection, false);
 
         // Create Alert Builder Section
-
+        /*
         //label width
         final int LABEL_WIDTH = 80;
 
@@ -1434,6 +1434,8 @@ public class BankStatsPanel extends PluginPanel
 
         CollapsibleSection alertDrop = new CollapsibleSection("Add Alert", alertBody, false);
 
+         */
+
         JPanel controlsBody = new JPanel();
         controlsBody.setLayout(new BoxLayout(controlsBody, BoxLayout.Y_AXIS));
         controlsBody.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -1483,8 +1485,11 @@ public class BankStatsPanel extends PluginPanel
         tablesStack.add(priceDrop);
 
         tablesStack.add(Box.createVerticalStrut(0));
+        /*
         alertDrop.setAlignmentX(Component.LEFT_ALIGNMENT);
         tablesStack.add(alertDrop);
+
+         */
 
         tablesStack.add(Box.createVerticalStrut(6));
         tablesStack.add(Box.createVerticalGlue());
