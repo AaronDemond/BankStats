@@ -1,9 +1,6 @@
-# <span style="color:#3A5F40">BankStats Plugin</span>
+# <span style="color:#3A5F40"><center>BankStats Plugin</center></span>
 
-
----
-
-## <span style="color:#6F5E53">Features</span>
+## <span style="color:#6F5E53"><center>Features</center></span>
 
 - 📊 Monitors price changes of items in your bank over time.
 - 📈 Provides detailed statistics and trends for each item.
@@ -12,8 +9,7 @@
 - 🕓 Track prices at any interval you choose - daily, weekly, hourly, Etc.
 - 💾 Stores any number of snapshots locally for later comparison.
 
----
-## <span style="color:#6F5E53">Usage (TL;DR at the bottom)</span>
+## <span style="color:#6F5E53"><center>Usage (TL;DR at the bottom)</center></span>
 
 The plugin works by comparing the current value of 
 your items against a previous *snapshot* taken at 
@@ -35,19 +31,16 @@ you update by pressing "Update from bank".
   - Remember: snapshots are based on your most recent import.  
   If your bank has changed, re-import before saving.
 
----
-## <span style="color:#6F5E53">TL;DR</span>
+## <span style="color:#6F5E53"><center>TL;DR</center></span>
 
 1. Open bank.
 2. Import items
 3. Save snapshot or load snapshot. (Save if you want something to reference later, load if you want to compare now). When you load a snapshot the Gain / Loss table is automatically populated.
 4. To repeat step 3, the safest thing to do is re import from your bank. This automatically refreshes the items loaded and their prices.
 
----
-# <span style="color:#6F5E53">Definitions</span>
+# <span style="color:#6F5E53"><center>Definitions</center></span>
 
----
-## <span style="color:#5B7C99">Price Data Table</span>
+## <span style="color:#5B7C99"><center>Price Data Table</span>
 
 - <span style="color:#CA9A4A">Item</span>
     - The name of the item as reported by RuneLite / the OSRS client.
@@ -70,8 +63,7 @@ you update by pressing "Update from bank".
       - % Higher values mean the item has fallen significantly from its weekly peak.
       - % Lower values (close to 0%) mean the price is very close to its highest weekly level.
 
----
-## <span style="color:#5B7C99">Price Gain / Loss Table</span>
+## <span style="color:#5B7C99"><center>Price Gain / Loss Table</span>
 - <span style="color:#CA9A4A">Item</span>
   - The name of the item that exists both in:
       - Your currently loaded snapshot file, and
@@ -86,8 +78,7 @@ you update by pressing "Update from bank".
 
 
 
----
-### <span style="color:#5B7C99">Notes</span>
+### <span style="color:#5B7C99"><center>Notes</center></span>
 
 - Written by GooberH3
 - Uses the official [OSRS Wiki Prices API](https://prices.runescape.wiki)
