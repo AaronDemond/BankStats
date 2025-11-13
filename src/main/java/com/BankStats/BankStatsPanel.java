@@ -1,4 +1,4 @@
-package com.BankStats;
+package com.bankstats;
 import java.nio.file.DirectoryStream;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.text.SimpleDateFormat;
@@ -451,7 +451,7 @@ public class BankStatsPanel extends PluginPanel
 
             java.util.Map<Integer, Integer> idToQty = new java.util.HashMap<>();
             if (backingRows != null) {
-                for (com.BankStats.BankStatsPlugin.Row r : backingRows) {
+                for (com.bankstats.BankStatsPlugin.Row r : backingRows) {
                     if (r != null && r.qty != null && r.qty > 0) idToQty.put(r.id, r.qty);
                 }
             }
@@ -589,7 +589,7 @@ public class BankStatsPanel extends PluginPanel
         try (BufferedWriter w = Files.newBufferedWriter(path, StandardCharsets.UTF_8)) {
             w.write("id,name,currentHigh");
             w.newLine();
-            for (com.BankStats.BankStatsPlugin.Row r : backingRows) {
+            for (com.bankstats.BankStatsPlugin.Row r : backingRows) {
                 if (r.currentHigh == null) continue;
                 w.write(Integer.toString(r.id)); w.write(",");
                 w.write(r.name == null ? "" : r.name); w.write(",");

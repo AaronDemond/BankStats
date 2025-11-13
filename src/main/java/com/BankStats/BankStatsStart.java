@@ -1,4 +1,4 @@
-package com.BankStats;
+package com.bankstats;
 
 import net.runelite.client.RuneLite;
 import net.runelite.client.externalplugins.ExternalPluginManager;

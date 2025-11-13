@@ -1,4 +1,7 @@
-package com.BankStats;
+package com.bankstats;
+
+import com.bankstats.BankStatsPlugin;        // ← correct import
+import com.bankstats.BankStatsPlugin.Row;    // ← import the Row inner class
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -16,6 +19,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 public class AlertManager {
+
     private final List<Alert> alerts = new ArrayList<>();
     private final Path alertsFile;
     private final Gson gson;
@@ -52,9 +56,12 @@ public class AlertManager {
                 .collect(Collectors.toList());
     }
 
-    public void checkAlerts(List<BankStatsPlugin.Row> currentData) {
+    // ------------------------------------------------------------
+    // FIXED: use BankStatsPlugin.Row from the new lowercase package
+    // ------------------------------------------------------------
+    public void checkAlerts(List<Row> currentData) {
         for (Alert alert : getEnabledAlerts()) {
-            for (BankStatsPlugin.Row row : currentData) {
+            for (Row row : currentData) {
                 if (row.id == alert.getItemId() && row.currentHigh != null) {
                     if (alert.checkCondition(row.currentHigh)) {
                         triggerAlert(alert, row.currentHigh);
@@ -66,8 +73,6 @@ public class AlertManager {
     }
 
     private void triggerAlert(Alert alert, int currentPrice) {
-        // For now, just print to console
-        // Later: show notification, play sound, etc.
         System.out.println("🔔 ALERT TRIGGERED: " + alert + " (Current: " + currentPrice + " gp)");
     }
 
@@ -95,4 +100,3 @@ public class AlertManager {
         }
     }
 }
-

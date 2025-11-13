@@ -1,4 +1,4 @@
-package com.BankStats;
+package com.bankstats;
 
 import javax.swing.*;
 import javax.swing.table.TableCellRenderer;

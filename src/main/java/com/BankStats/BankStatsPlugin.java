@@ -1,4 +1,4 @@
-package com.BankStats;
+package com.bankstats;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import javax.swing.SwingUtilities;
@@ -53,7 +53,7 @@ public class BankStatsPlugin extends Plugin
     private OkHttpClient okHttpClient;
     private AlertManager alertManager;  // Add this line
     private NavigationButton navButton;
-    private com.BankStats.BankStatsPanel panel;
+    private com.bankstats.BankStatsPanel panel;
     public AlertManager getAlertManager() {
         return alertManager;
     }
@@ -108,7 +108,7 @@ public class BankStatsPlugin extends Plugin
                 }
                 catch (Exception ignored) {}
 
-                panel = new com.BankStats.BankStatsPanel(this, this::requestUpdate);
+                panel = new com.bankstats.BankStatsPanel(this, this::requestUpdate);
                 BufferedImage icon = ImageUtil.loadImageResource(
                         BankStatsPlugin.class, "bankprices.png"
                 );
@@ -127,7 +127,7 @@ public class BankStatsPlugin extends Plugin
         else
         {
             log.info("Initial startup (gold)");
-            panel = new com.BankStats.BankStatsPanel(this, this::requestUpdate);
+            panel = new com.bankstats.BankStatsPanel(this, this::requestUpdate);
 
             BufferedImage icon = ImageUtil.loadImageResource(
                     BankStatsPlugin.class, "bankprices.png"
