@@ -1647,35 +1647,18 @@ public class BankStatsPanel extends PluginPanel
 
         JTable popupTable = new JTable(tm) {
             @Override
-            public Component prepareRenderer(javax.swing.table.TableCellRenderer renderer, int row, int column)
-            {
-                Component c = super.prepareRenderer(renderer, row, column);
-                if (isRowSelected(row)) {
-                    c.setBackground(getSelectionBackground());
-                    c.setForeground(getSelectionForeground());
-                } else {
-                    int hover = hoverRowOf(this);
-                    Color base = getBackground();
-                    if (hover == row) {
-                        c.setBackground(nudge(base, +40));
-                        c.setForeground(getForeground());
-                    } else {
-                        Color a = nudge(base, +6);
-                        Color b = nudge(base, +2);
-                        c.setBackground((row % 2 == 0) ? a : b);
-                        c.setForeground(getForeground());
-                    }
-                }
-                return c;
-            }
-
-            @Override
-            public String getToolTipText(MouseEvent e)
-            {
+            public String getToolTipText(MouseEvent e) {
                 Point p = e.getPoint();
                 int viewRow = rowAtPoint(p);
                 int viewCol = columnAtPoint(p);
-                return cellTooltip(this, tm, viewRow, viewCol, NumberFormat.getIntegerInstance(Locale.US));
+                return cellTooltip(this, tm, viewRow, viewCol, NumberFormat.getIntegerInstance());
+            }
+
+            @Override
+            public Component prepareRenderer(TableCellRenderer renderer, int row, int column) {
+                Component c = super.prepareRenderer(renderer, row, column);
+                applyZebra(c, this, row);
+                return c;
             }
         };
 
@@ -1684,60 +1667,87 @@ public class BankStatsPanel extends PluginPanel
         popupTable.setAutoCreateRowSorter(true);
         popupTable.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
 
-        DefaultTableCellRenderer intRenderer = new DefaultTableCellRenderer() {
-            @Override protected void setValue(Object value) { setText(fmtKM((Integer) value)); }
+        // QTY renderer (column 1)
+        DefaultTableCellRenderer qtyRenderer = new QuantityCellRenderer();
+
+        // GP renderer for price columns (columns 2-8)
+        GpCellRenderer gpRenderer = new GpCellRenderer();
+
+        // Volatility renderer (columns 9-10) - decimal format
+        DefaultTableCellRenderer volRenderer = new DefaultTableCellRenderer() {
+            private final DecimalFormat df = new DecimalFormat("0.0000");
             { setHorizontalAlignment(SwingConstants.RIGHT); }
-        };
-        DefaultTableCellRenderer pctRenderer = new DefaultTableCellRenderer() {
-            @Override protected void setValue(Object value) {
-                if (value instanceof Double) setText(PCT_FMT.format(((Double) value).doubleValue()));
-                else setText(value == null ? "-" : value.toString());
+            @Override
+            protected void setValue(Object value) {
+                if (value == null) {
+                    setText("-");
+                } else {
+                    setText(df.format((Double) value));
+                }
             }
-            { setHorizontalAlignment(SwingConstants.RIGHT); }
         };
 
         int colCount = tm.getColumnCount();
-        if (colCount > 1) popupTable.getColumnModel().getColumn(1).setCellRenderer(intRenderer);
-        for (int c = 2; c < colCount; c++) {
-            popupTable.getColumnModel().getColumn(c).setCellRenderer(pctRenderer);
+
+        // Column 1: QTY
+        if (colCount > 1) popupTable.getColumnModel().getColumn(1).setCellRenderer(qtyRenderer);
+
+        // Columns 2-8: GP values (Current High, 7d Low/High, 30d Low/High, 6mo Low/High)
+        for (int c = 2; c <= 8 && c < colCount; c++) {
+            popupTable.getColumnModel().getColumn(c).setCellRenderer(gpRenderer);
         }
 
-        int[] widths = {220, 140, 150, 150, 170, 170, 180, 180};
+        // Columns 9-10: Volatility
+        if (colCount > 9) popupTable.getColumnModel().getColumn(9).setCellRenderer(volRenderer);
+        if (colCount > 10) popupTable.getColumnModel().getColumn(10).setCellRenderer(volRenderer);
+
+        // Columns 11-16: Percentages
+        for (int c = 11; c < colCount; c++) {
+            popupTable.getColumnModel().getColumn(c).setCellRenderer(PCT_RENDERER);
+        }
+
+        int[] widths = {220, 80, 100, 100, 100, 100, 100, 100, 100, 80, 80, 100, 100, 100, 100, 100, 100};
         for (int i = 0; i < Math.min(widths.length, colCount); i++) {
             popupTable.getColumnModel().getColumn(i).setPreferredWidth(widths[i]);
         }
 
-        TableRowSorter<DefaultTableModel> popupSorter =
-                (TableRowSorter<DefaultTableModel>) popupTable.getRowSorter();
+        TableRowSorter<DefaultTableModel> popupSorter = (TableRowSorter<DefaultTableModel>) popupTable.getRowSorter();
         if (popupSorter != null) {
-            popupSorter.setComparator(1, Comparator.nullsLast(Integer::compareTo));
-            for (int c = 2; c < colCount; c++) {
-                popupSorter.setComparator(c, Comparator.nullsLast(Double::compare));
+            Comparator<Integer> intCmp = Comparator.nullsLast(Integer::compareTo);
+            Comparator<Double> dblCmp = Comparator.nullsLast(Double::compare);
+
+            // Column 1: Qty
+            popupSorter.setComparator(1, intCmp);
+
+            // Columns 2-8: GP prices
+            for (int c = 2; c <= 8 && c < colCount; c++) {
+                popupSorter.setComparator(c, intCmp);
             }
-            if (detailSorter != null) {
-                popupSorter.setRowFilter(detailSorter.getRowFilter());
+
+            // Columns 9-10: Volatility (Double)
+            if (colCount > 9) popupSorter.setComparator(9, dblCmp);
+            if (colCount > 10) popupSorter.setComparator(10, dblCmp);
+
+            // Columns 11-16: Percentages (Double)
+            for (int c = 11; c < colCount; c++) {
+                popupSorter.setComparator(c, dblCmp);
             }
         }
 
-        JTableHeader hdr = new JTableHeader(popupTable.getColumnModel())
-        {
+        JTableHeader hdr = new JTableHeader(popupTable.getColumnModel()) {
             @Override
-            public String getToolTipText(MouseEvent e)
-            {
-                int vCol = columnAtPoint(e.getPoint());
-                if (vCol < 0) return null;
-
-                int mCol = popupTable.convertColumnIndexToModel(vCol);
-                return detailHeaderTooltipForColumn(mCol);
+            public String getToolTipText(MouseEvent e) {
+                int mCol = popupTable.columnAtPoint(e.getPoint());
+                if (mCol >= 0 && mCol < popupTable.getColumnCount()) {
+                    return detailHeaderTooltipForColumn(mCol);
+                }
+                return null;
             }
         };
         popupTable.setTableHeader(hdr);
 
-
         if (distancesDlg != null && distancesDlg.isShowing()) {
-            distancesDlg.toFront();
-            distancesDlg.requestFocus();
-            return;
+            distancesDlg.dispose();
         }
 
         distancesDlg = new JDialog();
