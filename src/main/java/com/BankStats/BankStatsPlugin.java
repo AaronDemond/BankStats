@@ -250,6 +250,7 @@ public class BankStatsPlugin extends Plugin
                 final int qty = qtyMap.getOrDefault(fid, 0);
                 cs.submit(() -> {
                     Integer currentHigh = latest.get(fid);
+                    Integer currentLow = null;
                     Integer weekLow = null;
                     Integer weekHigh = null;
 
@@ -274,6 +275,8 @@ public class BankStatsPlugin extends Plugin
                     {
                         // Fetch timeseries stats for this item
                         SeriesStats s = fetchWeekStatsWithRetry(fid);
+
+                        currentLow = s.minLow;
 
                         // Use true lows/highs for all visible columns.
                         // WeekLow/WeekHigh are just the 7-day true extremes.
@@ -335,6 +338,7 @@ public class BankStatsPlugin extends Plugin
                             names.getOrDefault(fid, "Item " + fid),
                             qty,
                             currentHigh,
+                            currentLow,
                             weekLow,
                             weekHigh,
 
@@ -607,6 +611,38 @@ public class BankStatsPlugin extends Plugin
         return (int) m;
     }
 
+    //fetches lows
+    private Map<Integer, Integer> fetchLatestBulkLow(Set<Integer> ids) throws IOException
+    {
+        Request req = new Request.Builder()
+                .url("https://prices.runescape.wiki/api/v1/osrs/latest")
+                .header("User-Agent", UA)
+                .header("Accept", "application/json")
+                .build();
+
+        try (Response resp = okHttpClient.newCall(req).execute())
+        {
+            if (!resp.isSuccessful() || resp.body() == null)
+                throw new IOException("bulk latest http " + resp.code());
+
+            JsonObject root = gson.fromJson(resp.body().charStream(), JsonObject.class);
+            JsonObject data = root.getAsJsonObject("data");
+            Map<Integer, Integer> out = new HashMap<>(ids.size());
+            if (data == null) return out;
+
+            for (int id : ids)
+            {
+                JsonObject perId = data.getAsJsonObject(Integer.toString(id));
+                if (perId != null)
+                {
+                    JsonElement high = perId.get("low");
+                    if (high != null && !high.isJsonNull())
+                        out.put(id, high.getAsInt());
+                }
+            }
+            return out;
+        }
+    }
     private Map<Integer, Integer> fetchLatestBulk(Set<Integer> ids) throws IOException
     {
         Request req = new Request.Builder()
@@ -673,6 +709,7 @@ public class BankStatsPlugin extends Plugin
         final String name;
         final Integer qty;
         final Integer currentHigh;
+        final Integer currentLow;
         final Integer weekLow;
         final Integer weekHigh;
         final Integer weekHigh7d;
@@ -692,7 +729,7 @@ public class BankStatsPlugin extends Plugin
         final Double distTo6moLowPct;
         final Double distTo6moHighPct;
 
-        Row(int id, String name, Integer qty, Integer currentHigh, Integer weekLow, Integer weekHigh,
+        Row(int id, String name, Integer qty, Integer currentHigh, Integer currentLow, Integer weekLow, Integer weekHigh,
             Integer weekHigh7d, Integer weekLow7d,
             Integer weekHigh30d, Integer weekLow30d,
             Integer weekHigh6mo, Integer weekLow6mo,
@@ -705,6 +742,7 @@ public class BankStatsPlugin extends Plugin
             this.name = name;
             this.qty = qty;
             this.currentHigh = currentHigh;
+            this.currentLow = currentLow;
             this.weekLow = weekLow;
             this.weekHigh = weekHigh;
 

@@ -650,23 +650,21 @@ public class BankStatsPanel extends PluginPanel
             case 0:  return "Item name";
             case 1:  return "Qty of this item in your bank at the time of the last import";
             case 2:  return "Current high price (per item) from the OSRS Wiki /latest endpoint";
-
-            case 3:  return "True 7-day low: lowest recorded price in the last 7 days";
-            case 4:  return "True 7-day high: highest recorded price in the last 7 days";
-            case 5:  return "True 30-day low: lowest recorded price in the last 30 days";
-            case 6:  return "True 30-day high: highest recorded price in the last 30 days";
-            case 7:  return "True 6-month low: lowest recorded price in the last ~180 days";
-            case 8:  return "True 6-month high: highest recorded price in the last ~180 days";
-
-            case 9:  return "Vol 7d: how much the price has bounced around over the last 7 days";
-            case 10: return "Vol 30d: how much the price has bounced around over the last 30 days";
-
-            case 11: return "% from 7d Low: how far the current price is above the 7-day low";
-            case 12: return "% below 7d High: how far the current price is below the 7-day high";
-            case 13: return "% from 30d Low: how far the current price is above the 30-day low";
-            case 14: return "% below 30d High: how far the current price is below the 30-day high";
-            case 15: return "% from 6mo Low: how far the current price is above the 6-month low";
-            case 16: return "% below 6mo High: how far the current price is below the 6-month high";
+            case 3:  return "Current low price (per item) from the OSRS Wiki /latest endpoint";
+            case 4:  return "True 7-day low: lowest recorded price in the last 7 days";
+            case 5:  return "True 7-day high: highest recorded price in the last 7 days";
+            case 6:  return "True 30-day low: lowest recorded price in the last 30 days";
+            case 7:  return "True 30-day high: highest recorded price in the last 30 days";
+            case 8:  return "True 6-month low: lowest recorded price in the last ~180 days";
+            case 9:  return "True 6-month high: highest recorded price in the last ~180 days";
+            case 10:  return "Vol 7d: how much the price has bounced around over the last 7 days";
+            case 11: return "Vol 30d: how much the price has bounced around over the last 30 days";
+            case 12: return "% from 7d Low: how far the current price is above the 7-day low";
+            case 13: return "% below 7d High: how far the current price is below the 7-day high";
+            case 14: return "% from 30d Low: how far the current price is above the 30-day low";
+            case 15: return "% below 30d High: how far the current price is below the 30-day high";
+            case 16: return "% from 6mo Low: how far the current price is above the 6-month low";
+            case 17: return "% below 6mo High: how far the current price is below the 6-month high";
 
             default: return null;
         }
@@ -1001,6 +999,7 @@ public class BankStatsPanel extends PluginPanel
                         "Item",
                         "Qty",
                         "Current High",
+                        "Current Low",
                         "7d Low",
                         "7d High",
                         "30d Low",
@@ -1092,12 +1091,13 @@ public class BankStatsPanel extends PluginPanel
 // Indices of GP-valued columns in the Price Data table
         int[] gpCols = {
                 2, // Current High
-                3, // 7d Low
-                4, // 7d High
-                5, // 30d Low
-                6, // 30d High
-                7, // 6mo Low
-                8, // 6mo High
+                3, // Current Low
+                4, // 7d Low
+                5, // 7d High
+                6, // 30d Low
+                7, // 30d High
+                8, // 6mo Low
+                9, // 6mo High
         };
 
         for (int col : gpCols)
@@ -1197,24 +1197,25 @@ public class BankStatsPanel extends PluginPanel
             // Qty + GP prices
             detailSorter.setComparator(1, intCmp); // Qty
             detailSorter.setComparator(2, intCmp); // Current High
-            detailSorter.setComparator(3, intCmp); // 7d Low
-            detailSorter.setComparator(4, intCmp); // 7d High
-            detailSorter.setComparator(5, intCmp); // 30d Low
-            detailSorter.setComparator(6, intCmp); // 30d High
-            detailSorter.setComparator(7, intCmp); // 6mo Low
-            detailSorter.setComparator(8, intCmp); // 6mo High
+            detailSorter.setComparator(3, intCmp); // Current Low
+            detailSorter.setComparator(4, intCmp); // 7d Low
+            detailSorter.setComparator(5, intCmp); // 7d High
+            detailSorter.setComparator(6, intCmp); // 30d Low
+            detailSorter.setComparator(7, intCmp); // 30d High
+            detailSorter.setComparator(8, intCmp); // 6mo Low
+            detailSorter.setComparator(9, intCmp); // 6mo High
 
             // Volatility
-            detailSorter.setComparator(9, dblCmp);  // Vol 7d
-            detailSorter.setComparator(10, dblCmp); // Vol 30d
+            detailSorter.setComparator(10, dblCmp);  // Vol 7d
+            detailSorter.setComparator(11, dblCmp); // Vol 30d
 
             // Percent columns
-            detailSorter.setComparator(11, dblCmp);
             detailSorter.setComparator(12, dblCmp);
             detailSorter.setComparator(13, dblCmp);
             detailSorter.setComparator(14, dblCmp);
             detailSorter.setComparator(15, dblCmp);
             detailSorter.setComparator(16, dblCmp);
+            detailSorter.setComparator(17, dblCmp);
         }
 
         searchField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
@@ -1545,21 +1546,22 @@ public class BankStatsPanel extends PluginPanel
                     case 0:  return "Item name";
                     case 1:  return "Qty of this item in your bank at the time of the last import";
                     case 2:  return "Current high price (per item) from the OSRS Wiki /latest endpoint";
-                    case 3:  return "True 7-day low: lowest recorded price in the last 7 days";
-                    case 4:  return "True 7-day high: highest recorded price in the last 7 days";
-                    case 5:  return "True 30-day low: lowest recorded price in the last 30 days";
-                    case 6:  return "True 30-day high: highest recorded price in the last 30 days";
-                    case 7:  return "True 6-month low: lowest recorded price in the last ~180 days";
-                    case 8:  return "True 6-month high: highest recorded price in the last ~180 days";
-                    case 9:  return "Vol 7d: how much the price has bounced around over the last 7 days";
-                    case 10: return "Vol 30d: how much the price has bounced around over the last 30 days";
+                    case 3:  return "Current low price (per item) from the OSRS Wiki /latest endpoint";
+                    case 4:  return "True 7-day low: lowest recorded price in the last 7 days";
+                    case 5:  return "True 7-day high: highest recorded price in the last 7 days";
+                    case 6:  return "True 30-day low: lowest recorded price in the last 30 days";
+                    case 7:  return "True 30-day high: highest recorded price in the last 30 days";
+                    case 8:  return "True 6-month low: lowest recorded price in the last ~180 days";
+                    case 9:  return "True 6-month high: highest recorded price in the last ~180 days";
+                    case 10:  return "Vol 7d: how much the price has bounced around over the last 7 days";
+                    case 11: return "Vol 30d: how much the price has bounced around over the last 30 days";
 
-                    case 11: return "% from 7d Low: how far the current price is above the 7-day low";
-                    case 12: return "% below 7d High: how far the current price is below the 7-day high";
-                    case 13: return "% from 30d Low: how far the current price is above the 30-day low";
-                    case 14: return "% below 30d High: how far the current price is below the 30-day high";
-                    case 15: return "% from 6mo Low: how far the current price is above the 6-month low";
-                    case 16: return "% below 6mo High: how far the current price is below the 6-month high";
+                    case 12: return "% from 7d Low: how far the current price is above the 7-day low";
+                    case 13: return "% below 7d High: how far the current price is below the 7-day high";
+                    case 14: return "% from 30d Low: how far the current price is above the 30-day low";
+                    case 15: return "% below 30d High: how far the current price is below the 30-day high";
+                    case 16: return "% from 6mo Low: how far the current price is above the 6-month low";
+                    case 17: return "% below 6mo High: how far the current price is below the 6-month high";
 
                     default: return null;
                 }
@@ -1613,6 +1615,7 @@ public class BankStatsPanel extends PluginPanel
                         r.name,            // "Item"
                         r.qty,             // "Qty"
                         r.currentHigh,     // "Current High"
+                        r.currentLow,     // "Current High"
 
                         // --- TRUE extremes over each window (from OSRS wiki avgLow/avgHigh) ---
                         r.weekLow7d,       // "7d Low"   (trueLow7)
@@ -1693,20 +1696,20 @@ public class BankStatsPanel extends PluginPanel
         if (colCount > 1) popupTable.getColumnModel().getColumn(1).setCellRenderer(qtyRenderer);
 
         // Columns 2-8: GP values (Current High, 7d Low/High, 30d Low/High, 6mo Low/High)
-        for (int c = 2; c <= 8 && c < colCount; c++) {
+        for (int c = 2; c <= 9 && c < colCount; c++) {
             popupTable.getColumnModel().getColumn(c).setCellRenderer(gpRenderer);
         }
 
         // Columns 9-10: Volatility
-        if (colCount > 9) popupTable.getColumnModel().getColumn(9).setCellRenderer(volRenderer);
-        if (colCount > 10) popupTable.getColumnModel().getColumn(10).setCellRenderer(volRenderer);
+        if (colCount > 9) popupTable.getColumnModel().getColumn(10).setCellRenderer(volRenderer);
+        if (colCount > 10) popupTable.getColumnModel().getColumn(11).setCellRenderer(volRenderer);
 
         // Columns 11-16: Percentages
-        for (int c = 11; c < colCount; c++) {
+        for (int c = 12; c < colCount; c++) {
             popupTable.getColumnModel().getColumn(c).setCellRenderer(PCT_RENDERER);
         }
 
-        int[] widths = {220, 80, 100, 100, 100, 100, 100, 100, 100, 80, 80, 100, 100, 100, 100, 100, 100};
+        int[] widths = {220, 80, 100, 100, 100, 100, 100, 100, 100, 80, 80, 100, 100, 100, 100, 100, 100, 100};
         for (int i = 0; i < Math.min(widths.length, colCount); i++) {
             popupTable.getColumnModel().getColumn(i).setPreferredWidth(widths[i]);
         }
@@ -1720,16 +1723,16 @@ public class BankStatsPanel extends PluginPanel
             popupSorter.setComparator(1, intCmp);
 
             // Columns 2-8: GP prices
-            for (int c = 2; c <= 8 && c < colCount; c++) {
+            for (int c = 2; c <= 9 && c < colCount; c++) {
                 popupSorter.setComparator(c, intCmp);
             }
 
             // Columns 9-10: Volatility (Double)
-            if (colCount > 9) popupSorter.setComparator(9, dblCmp);
-            if (colCount > 10) popupSorter.setComparator(10, dblCmp);
+            if (colCount > 9) popupSorter.setComparator(10, dblCmp);
+            if (colCount > 10) popupSorter.setComparator(11, dblCmp);
 
             // Columns 11-16: Percentages (Double)
-            for (int c = 11; c < colCount; c++) {
+            for (int c = 12; c < colCount; c++) {
                 popupSorter.setComparator(c, dblCmp);
             }
         }
