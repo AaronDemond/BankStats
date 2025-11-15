@@ -46,15 +46,17 @@ you update by pressing "Update from bank".
     - The name of the item as reported by RuneLite / the OSRS client.
 - <span style="color:#CA9A4A">Qty</span>
     - How many of this item are in your bank, based on the most recent “Update from bank” import.
-  
+  ]a
 - <span style="color:#CA9A4A">Current High</span>
     - The current “high” price per item from the OSRS Wiki /latest endpoint when you last imported.
     - This is roughly the price that a buyer is paying on the Grand Exchange right now.
 
 - <span style="color:#CA9A4A">Low and High.</span>
     - The true lowest price this item has hit over the given interval.
-
-- <span style="color:#CA9A4A">Percentage Columns</span>
+- <span style="color:#CA9A4A">Volitility</span>
+    - The size of the range the item has been trading within.
+    - Low values indicate stability and high indicates unstability.
+- <span style="color:#CA9A4A">Percentage Distance</span>
     - How far the current price with respect to the min or max of the given time frame.
     - % from a low means how far it is currently trading above the minimum of the given time frame, expressed as a percentage.
         - % Higher values mean the item is trading much higher than its weekly bottom.

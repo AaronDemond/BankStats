@@ -1170,7 +1170,7 @@ public class BankStatsPanel extends PluginPanel
 // Percent columns (already stored as Double ratios) -> 0.0% formatting
         applyRenderer(
                 this.detailTable,
-                new int[]{11, 12, 13, 14, 15, 16},
+                new int[]{9,10,11, 12, 13, 14, 15, 16},
                 PCT_RENDERER
         );
 
