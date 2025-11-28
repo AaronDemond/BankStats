@@ -239,40 +239,6 @@ public class BankStatsPanel extends PluginPanel
                     snapshotModel.addRow(new Object[]{ name, net, pct, null });
                 }
 
-
-                for (int id : ids) {
-                    final Integer snap = snapBaseHighs.get(id);
-                    final Integer cur  = latestMap.get(id);
-                    if (snap == null || cur == null) {
-                        continue;
-                    }
-
-                    final Double pct = (snap != 0) ? ((cur - snap) / (double) snap) : null;
-
-                    final Integer qty = idToQty.get(id);
-
-                    Integer net = null;
-                    if (qty != null) {
-                        long v = (long) qty * (long) (cur - snap);
-                        if      (v > Integer.MAX_VALUE) net = Integer.MAX_VALUE;
-                        else if (v < Integer.MIN_VALUE) net = Integer.MIN_VALUE;
-                        else                             net = (int) v;
-
-                        grand += (net != null ? net : 0);
-                    }
-
-                    final String name = snapBaseNames.getOrDefault(id, "Item " + id);
-                    snapshotModel.addRow(new Object[]{ name, net, pct, null });
-                }
-
-                // Include coins + platinum tokens in the overall Net figure
-                long coinsAndTokens = computeCoinAndTokenValue(idToQty);
-                grand += coinsAndTokens;
-
-                if      (grand > Integer.MAX_VALUE) snapshotGrandTotal = Integer.MAX_VALUE;
-                else if (grand < Integer.MIN_VALUE) snapshotGrandTotal = Integer.MIN_VALUE;
-                else                                snapshotGrandTotal = (int) grand;
-
                 if      (grand > Integer.MAX_VALUE) snapshotGrandTotal = Integer.MAX_VALUE;
                 else if (grand < Integer.MIN_VALUE) snapshotGrandTotal = Integer.MIN_VALUE;
                 else                                snapshotGrandTotal = (int) grand;
@@ -549,12 +515,6 @@ public class BankStatsPanel extends PluginPanel
                 snapshotModel.addRow(new Object[]{ name, net, pct, null });
             }
 
-
-// Include current coins & platinum tokens in the overall Net total.
-// (Only has an effect once a bank import has provided quantities.)
-            long coinsAndTokens = computeCoinAndTokenValue(idToQty);
-            grand += coinsAndTokens;
-
             if      (grand > Integer.MAX_VALUE) snapshotGrandTotal = Integer.MAX_VALUE;
             else if (grand < Integer.MIN_VALUE) snapshotGrandTotal = Integer.MIN_VALUE;
             else                                snapshotGrandTotal = (int) grand;
@@ -712,44 +672,6 @@ public class BankStatsPanel extends PluginPanel
         // Under 1000 -> raw number
         return sign + av;
     }
-
-
-    // OSRS item IDs for coins and platinum tokens
-    private static final int ITEM_ID_COINS = 995;
-    private static final int ITEM_ID_PLATINUM_TOKEN = 13204;
-    private static final int PLATINUM_TOKEN_VALUE = 1000;
-
-    /**
-     * Compute the GP-equivalent value of all coins and platinum tokens
-     * present in the given id→qty map.
-     *
-     * - 1 coin  = 1 gp
-     * - 1 token = 1000 gp
-     */
-    private static long computeCoinAndTokenValue(Map<Integer, Integer> idToQty)
-    {
-        if (idToQty == null || idToQty.isEmpty())
-        {
-            return 0L;
-        }
-
-        long total = 0L;
-
-        Integer coins = idToQty.get(ITEM_ID_COINS);
-        if (coins != null && coins > 0)
-        {
-            total += coins.longValue(); // 1 coin = 1 gp
-        }
-
-        Integer tokens = idToQty.get(ITEM_ID_PLATINUM_TOKEN);
-        if (tokens != null && tokens > 0)
-        {
-            total += tokens.longValue() * (long) PLATINUM_TOKEN_VALUE; // 1 token = 1000 gp
-        }
-
-        return total;
-    }
-
     // Shared tooltip text for the Price Data (detail) table headers.
 // Used both by the main panel table and the popup version.
     private static String detailHeaderTooltipForColumn(int mCol)
