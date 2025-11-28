@@ -1,5 +1,6 @@
 package com.bankstats;
 import org.slf4j.Logger;
+import net.runelite.api.ItemComposition;
 import org.slf4j.LoggerFactory;
 import javax.swing.SwingUtilities;
 import net.runelite.client.ui.ClientToolbar;
@@ -185,10 +186,37 @@ public class BankStatsPlugin extends Plugin
 
             for (Item it : bank.getItems())
             {
-                if (it == null) continue;
-                int id = it.getId();
+                if (it == null)
+                {
+                    continue;
+                }
+
+                int id  = it.getId();
                 int qty = it.getQuantity();
-                if (id <= 0 || qty <= 0) continue;
+
+                // Ignore invalid / zero quantities
+                if (id <= 0 || qty <= 0)
+                {
+                    continue;
+                }
+
+                // --- NEW: skip bank placeholders (ghosted items with “0 real” quantity) ---
+                try
+                {
+                    ItemComposition comp = itemManager.getItemComposition(id);
+                    // Placeholder items have a non-negative placeholder template id
+                    // (commonly 14401) instead of -1.
+                    if (comp != null && comp.getPlaceholderTemplateId() != -1)
+                    {
+                        // This is a placeholder row; do NOT treat it as a real stack.
+                        continue;
+                    }
+                }
+                catch (Exception ignored)
+                {
+                    // If composition lookup fails, fall back to treating the item normally.
+                }
+                // ------------------------------------------------------------------------
 
                 int canon = itemManager.canonicalize(id);
                 if (canon > 0)
@@ -197,6 +225,7 @@ public class BankStatsPlugin extends Plugin
                     qtyMap.merge(canon, qty, Integer::sum);
                 }
             }
+
 
             Map<Integer, String> names = new HashMap<>();
             for (int id : ids)

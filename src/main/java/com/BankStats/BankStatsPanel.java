@@ -255,7 +255,7 @@ public class BankStatsPanel extends PluginPanel
 
                 refreshNetSummaryBox();
 
-                setStatus("Net recomputed using snapshot quantities and current bank.");
+                setStatus("Net recomputed");
             });
         });
     }
