@@ -37,7 +37,7 @@ import java.util.LinkedHashSet;
         name = "Bank Stats",
         //developerPlugin = true,
         description = "Bank value tracking and market analysis tool",
-        tags = {"bank", "prices", "panel", "wiki"}
+        tags = {"bank", "prices", "bankstats", "bank stats", "ge", "value", "bank value", "merching", "market"}
 )
 public class BankStatsPlugin extends Plugin
 {

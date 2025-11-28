@@ -239,6 +239,40 @@ public class BankStatsPanel extends PluginPanel
                     snapshotModel.addRow(new Object[]{ name, net, pct, null });
                 }
 
+
+                for (int id : ids) {
+                    final Integer snap = snapBaseHighs.get(id);
+                    final Integer cur  = latestMap.get(id);
+                    if (snap == null || cur == null) {
+                        continue;
+                    }
+
+                    final Double pct = (snap != 0) ? ((cur - snap) / (double) snap) : null;
+
+                    final Integer qty = idToQty.get(id);
+
+                    Integer net = null;
+                    if (qty != null) {
+                        long v = (long) qty * (long) (cur - snap);
+                        if      (v > Integer.MAX_VALUE) net = Integer.MAX_VALUE;
+                        else if (v < Integer.MIN_VALUE) net = Integer.MIN_VALUE;
+                        else                             net = (int) v;
+
+                        grand += (net != null ? net : 0);
+                    }
+
+                    final String name = snapBaseNames.getOrDefault(id, "Item " + id);
+                    snapshotModel.addRow(new Object[]{ name, net, pct, null });
+                }
+
+                // Include coins + platinum tokens in the overall Net figure
+                long coinsAndTokens = computeCoinAndTokenValue(idToQty);
+                grand += coinsAndTokens;
+
+                if      (grand > Integer.MAX_VALUE) snapshotGrandTotal = Integer.MAX_VALUE;
+                else if (grand < Integer.MIN_VALUE) snapshotGrandTotal = Integer.MIN_VALUE;
+                else                                snapshotGrandTotal = (int) grand;
+
                 if      (grand > Integer.MAX_VALUE) snapshotGrandTotal = Integer.MAX_VALUE;
                 else if (grand < Integer.MIN_VALUE) snapshotGrandTotal = Integer.MIN_VALUE;
                 else                                snapshotGrandTotal = (int) grand;
@@ -266,10 +300,41 @@ public class BankStatsPanel extends PluginPanel
         }
     }
 
-    private static final DefaultTableCellRenderer KM_RENDERER = new DefaultTableCellRenderer() {
-        @Override protected void setValue(Object value) { setText(fmtKM((Integer) value)); }
-        { setHorizontalAlignment(SwingConstants.RIGHT); }
+    private static final DefaultTableCellRenderer KM_RENDERER = new DefaultTableCellRenderer()
+    {
+        @Override
+        protected void setValue(Object value)
+        {
+            // Handle nulls
+            if (value == null)
+            {
+                setText("-");
+                return;
+            }
+
+            // Only format specially if it's actually an Integer
+            if (value instanceof Integer)
+            {
+                setText(fmtKM((Integer) value));
+            }
+            else if (value instanceof Number)
+            {
+                // Fallback: other numeric types -> format via their int value
+                int intVal = ((Number) value).intValue();
+                setText(fmtKM(intVal));
+            }
+            else
+            {
+                // Non-numeric -> plain string
+                setText(value.toString());
+            }
+        }
+
+        {
+            setHorizontalAlignment(SwingConstants.RIGHT);
+        }
     };
+
 
     private static final DefaultTableCellRenderer PCT_RENDERER = new DefaultTableCellRenderer() {
         @Override protected void setValue(Object value) {
@@ -484,6 +549,12 @@ public class BankStatsPanel extends PluginPanel
                 snapshotModel.addRow(new Object[]{ name, net, pct, null });
             }
 
+
+// Include current coins & platinum tokens in the overall Net total.
+// (Only has an effect once a bank import has provided quantities.)
+            long coinsAndTokens = computeCoinAndTokenValue(idToQty);
+            grand += coinsAndTokens;
+
             if      (grand > Integer.MAX_VALUE) snapshotGrandTotal = Integer.MAX_VALUE;
             else if (grand < Integer.MIN_VALUE) snapshotGrandTotal = Integer.MIN_VALUE;
             else                                snapshotGrandTotal = (int) grand;
@@ -641,6 +712,44 @@ public class BankStatsPanel extends PluginPanel
         // Under 1000 -> raw number
         return sign + av;
     }
+
+
+    // OSRS item IDs for coins and platinum tokens
+    private static final int ITEM_ID_COINS = 995;
+    private static final int ITEM_ID_PLATINUM_TOKEN = 13204;
+    private static final int PLATINUM_TOKEN_VALUE = 1000;
+
+    /**
+     * Compute the GP-equivalent value of all coins and platinum tokens
+     * present in the given id→qty map.
+     *
+     * - 1 coin  = 1 gp
+     * - 1 token = 1000 gp
+     */
+    private static long computeCoinAndTokenValue(Map<Integer, Integer> idToQty)
+    {
+        if (idToQty == null || idToQty.isEmpty())
+        {
+            return 0L;
+        }
+
+        long total = 0L;
+
+        Integer coins = idToQty.get(ITEM_ID_COINS);
+        if (coins != null && coins > 0)
+        {
+            total += coins.longValue(); // 1 coin = 1 gp
+        }
+
+        Integer tokens = idToQty.get(ITEM_ID_PLATINUM_TOKEN);
+        if (tokens != null && tokens > 0)
+        {
+            total += tokens.longValue() * (long) PLATINUM_TOKEN_VALUE; // 1 token = 1000 gp
+        }
+
+        return total;
+    }
+
     // Shared tooltip text for the Price Data (detail) table headers.
 // Used both by the main panel table and the popup version.
     private static String detailHeaderTooltipForColumn(int mCol)
@@ -1709,10 +1818,7 @@ public class BankStatsPanel extends PluginPanel
             popupTable.getColumnModel().getColumn(c).setCellRenderer(PCT_RENDERER);
         }
 
-        int[] widths = {220, 80, 100, 100, 100, 100, 100, 100, 100, 80, 80, 100, 100, 100, 100, 100, 100, 100};
-        for (int i = 0; i < Math.min(widths.length, colCount); i++) {
-            popupTable.getColumnModel().getColumn(i).setPreferredWidth(widths[i]);
-        }
+
 
         TableRowSorter<DefaultTableModel> popupSorter = (TableRowSorter<DefaultTableModel>) popupTable.getRowSorter();
         if (popupSorter != null) {
@@ -1749,6 +1855,52 @@ public class BankStatsPanel extends PluginPanel
         };
         popupTable.setTableHeader(hdr);
 
+
+// Auto-size columns to fit header text
+        JTableHeader header = popupTable.getTableHeader();
+        TableColumnModel colModel = popupTable.getColumnModel();
+
+        for (int col = 0; col < colModel.getColumnCount(); col++)
+        {
+            TableColumn column = colModel.getColumn(col);
+
+            // First column ("Item") should always be 200px wide
+            if (col == 0)
+            {
+                column.setPreferredWidth(200);
+                continue;
+            }
+
+
+            if (col == 1)
+            {
+                column.setPreferredWidth(100);
+                continue;
+            }
+
+            // Use the column's header renderer if available, otherwise the table header's default renderer
+            TableCellRenderer headerRenderer = column.getHeaderRenderer();
+            if (headerRenderer == null)
+            {
+                headerRenderer = header.getDefaultRenderer();
+            }
+
+            Component comp = headerRenderer.getTableCellRendererComponent(
+                    popupTable,
+                    column.getHeaderValue(),
+                    false,  // not selected
+                    false,  // not focused
+                    -1,
+                    col
+            );
+
+            int headerWidth = comp.getPreferredSize().width;
+
+            // Add some padding so text isn't cramped
+            int padding = 16;
+            column.setPreferredWidth(headerWidth + padding);
+        }
+
         if (distancesDlg != null && distancesDlg.isShowing()) {
             distancesDlg.dispose();
         }
@@ -1760,7 +1912,7 @@ public class BankStatsPanel extends PluginPanel
     // opens the window that shows gain/loss information
     private void openGainLossPopUpWindow()
     {
-        final DefaultTableModel tm = this.model;
+        final DefaultTableModel tm = this.snapshotModel;
 
         JTable popupTable = new JTable(tm) {
             @Override
@@ -1800,51 +1952,156 @@ public class BankStatsPanel extends PluginPanel
         popupTable.setAutoCreateRowSorter(true);
         popupTable.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
 
-        DefaultTableCellRenderer intRenderer = new DefaultTableCellRenderer() {
-            @Override
-            protected void setValue(Object value) { setText(fmtKM((Integer) value)); }
-            { setHorizontalAlignment(SwingConstants.RIGHT); }
-        };
-
         int colCount = tm.getColumnCount();
-        for (int c = 1; c < Math.min(colCount, 5); c++) {
-            popupTable.getColumnModel().getColumn(c).setCellRenderer(intRenderer);
+
+// Column 1: Net (GP)
+        if (colCount > 1)
+        {
+            popupTable.getColumnModel().getColumn(1).setCellRenderer(KM_RENDERER);
         }
 
-        int[] widths = {240, 140, 130, 130, 180};
-        for (int i = 0; i < Math.min(widths.length, colCount); i++) {
-            popupTable.getColumnModel().getColumn(i).setPreferredWidth(widths[i]);
+// Column 2: Percentage Change (Double)
+        if (colCount > 2)
+        {
+            popupTable.getColumnModel().getColumn(2).setCellRenderer(PCT_RENDERER);
         }
+
+// Column 3: Total Net
+        if (colCount > 3)
+        {
+            DefaultTableCellRenderer totalRenderer = new DefaultTableCellRenderer()
+            {
+                @Override
+                public Component getTableCellRendererComponent(
+                        JTable tbl, Object v, boolean sel, boolean focus, int row, int col)
+                {
+                    super.getTableCellRendererComponent(tbl, v, sel, focus, row, col);
+                    setHorizontalAlignment(SwingConstants.RIGHT);
+
+                    if (row == 0 && snapshotGrandTotal != null)
+                    {
+                        setText(fmtKM(snapshotGrandTotal));
+                    }
+                    else
+                    {
+                        setText("-");
+                    }
+                    return this;
+                }
+            };
+            popupTable.getColumnModel().getColumn(3).setCellRenderer(totalRenderer);
+        }
+
+
+
+
 
         TableRowSorter<DefaultTableModel> popupSorter =
                 (TableRowSorter<DefaultTableModel>) popupTable.getRowSorter();
-        if (popupSorter != null) {
-            Comparator<Integer> nullSafe = Comparator.nullsLast(Integer::compareTo);
-            for (int c = 1; c < Math.min(colCount, 5); c++) {
-                popupSorter.setComparator(c, nullSafe);
+        if (popupSorter != null)
+        {
+            Comparator<Integer> intCmp = Comparator.nullsLast(Integer::compareTo);
+            Comparator<Double> dblCmp = Comparator.nullsLast(Double::compare);
+
+            // Net column
+            if (colCount > 1)
+            {
+                popupSorter.setComparator(1, intCmp);
             }
-            if (mainSorter != null) {
-                popupSorter.setRowFilter(mainSorter.getRowFilter());
+
+            // Percentage Change column
+            if (colCount > 2)
+            {
+                popupSorter.setComparator(2, dblCmp);
+            }
+
+            // Total Net column – show but don't sort (matches inline behavior)
+            if (colCount > 3)
+            {
+                popupSorter.setSortable(3, false);
+            }
+
+            // Use the same RowFilter as the snapshot table (search box)
+            if (snapSorter != null)
+            {
+                popupSorter.setRowFilter(snapSorter.getRowFilter());
             }
         }
 
-        JTableHeader hdr = new JTableHeader(popupTable.getColumnModel()) {
+
+        JTableHeader hdr = new JTableHeader(popupTable.getColumnModel())
+        {
             @Override
-            public String getToolTipText(MouseEvent e) {
+            public String getToolTipText(MouseEvent e)
+            {
                 int vCol = columnAtPoint(e.getPoint());
                 if (vCol < 0) return null;
+
                 int mCol = popupTable.convertColumnIndexToModel(vCol);
-                switch (mCol) {
-                    case 0: return "Item name";
-                    case 1: return "Current price (high) from /latest";
-                    case 2: return "7-day low price";
-                    case 3: return "7-day high price";
-                    case 4: return "Gain or Loss = qty × [2×current − (7dLow + 7dHigh)]";
-                    default: return null;
+                switch (mCol)
+                {
+                    case 0:
+                        return "Item name";
+                    case 1:
+                        return "Net Gain or Loss = qty × (current − snapshot)";
+                    case 2:
+                        return "Percentage Change = (current − snapshot) / snapshot";
+                    case 3:
+                        return "Total Net = Σ over all rows of [qty × (current − snapshot)] "
+                                + "(only one cell is populated)";
+                    default:
+                        return null;
                 }
             }
         };
+
         popupTable.setTableHeader(hdr);
+
+
+// Auto-size columns to fit header text
+        JTableHeader header = popupTable.getTableHeader();
+        TableColumnModel colModel = popupTable.getColumnModel();
+
+        for (int col = 0; col < colModel.getColumnCount(); col++)
+        {
+            TableColumn column = colModel.getColumn(col);
+
+            // First column ("Item") should always be 200px wide
+            if (col == 0)
+            {
+                column.setPreferredWidth(200);
+                continue;
+            }
+
+            // First column ("Item") should always be 200px wide
+            if (col == 1)
+            {
+                column.setPreferredWidth(100);
+                continue;
+            }
+
+            // Use the column's header renderer if available, otherwise the table header's default renderer
+            TableCellRenderer headerRenderer = column.getHeaderRenderer();
+            if (headerRenderer == null)
+            {
+                headerRenderer = header.getDefaultRenderer();
+            }
+
+            Component comp = headerRenderer.getTableCellRendererComponent(
+                    popupTable,
+                    column.getHeaderValue(),
+                    false,  // not selected
+                    false,  // not focused
+                    -1,
+                    col
+            );
+
+            int headerWidth = comp.getPreferredSize().width;
+
+            // Add some padding so text isn't cramped
+            int padding = 16;
+            column.setPreferredWidth(headerWidth + padding);
+        }
 
         if (gainLossDlg != null && gainLossDlg.isShowing()) {
             gainLossDlg.toFront();
