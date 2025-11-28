@@ -7,8 +7,6 @@ import net.runelite.client.ui.NavigationButton;
 import java.util.concurrent.CompletionService;
 import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.Future;
-import okhttp3.Dispatcher;
-import java.util.concurrent.TimeUnit;
 import com.google.gson.*;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -23,7 +21,7 @@ import net.runelite.api.InventoryID;
 import net.runelite.api.Item;
 import net.runelite.api.ItemContainer;
 import net.runelite.api.widgets.Widget;
-import net.runelite.api.widgets.WidgetInfo;
+import net.runelite.api.widgets.ComponentID;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.plugins.Plugin;
@@ -49,15 +47,15 @@ public class BankStatsPlugin extends Plugin
     @Inject private ClientThread clientThread;
     @Inject private ClientToolbar clientToolbar;
     @Inject private ItemManager itemManager;
+    @Inject private Gson gson;
+    @Inject private OkHttpClient okHttpClient;
 
-    private OkHttpClient okHttpClient;
     private AlertManager alertManager;  // Add this line
     private NavigationButton navButton;
     private com.bankstats.BankStatsPanel panel;
     public AlertManager getAlertManager() {
         return alertManager;
     }
-    private final Gson gson = new GsonBuilder().create();
     private static final int CONCURRENCY = 24;
     private final ExecutorService executor = Executors.newFixedThreadPool(CONCURRENCY);
     private static final String UA = "BankStats/1.0 (contact: Charles.Demond@smu.ca)";
@@ -83,16 +81,6 @@ public class BankStatsPlugin extends Plugin
     protected void startUp() throws Exception
     {
 
-        // --- Initialize networking ---
-        Dispatcher dispatcher = new Dispatcher();
-        dispatcher.setMaxRequests(32);
-        dispatcher.setMaxRequestsPerHost(16);
-
-        okHttpClient = new OkHttpClient.Builder()
-                .dispatcher(dispatcher)
-                .connectTimeout(8, TimeUnit.SECONDS)
-                .readTimeout(8, TimeUnit.SECONDS)
-                .build();
 
         // --- Initialize AlertManager ---
         alertManager = new AlertManager();
@@ -152,6 +140,7 @@ public class BankStatsPlugin extends Plugin
                 )
         );
     }
+
     @Override
     protected void shutDown()
     {
@@ -163,10 +152,6 @@ public class BankStatsPlugin extends Plugin
         panel = null;
 
         executor.shutdownNow();
-        if (okHttpClient != null) {
-            okHttpClient.dispatcher().executorService().shutdownNow();
-            okHttpClient.connectionPool().evictAll();
-        }
     }
 
     private void requestUpdate()
@@ -229,7 +214,7 @@ public class BankStatsPlugin extends Plugin
 
     private boolean isBankOpen()
     {
-        Widget bank = client.getWidget(WidgetInfo.BANK_CONTAINER);
+        Widget bank = client.getWidget(ComponentID.BANK_CONTAINER);
         return bank != null && !bank.isHidden();
     }
 
