@@ -138,6 +138,7 @@ public class BankStatsPanel extends PluginPanel
 
     private final Map<Integer, Integer> snapBaseHighs = new HashMap<>();
     private final Map<Integer, String>  snapBaseNames = new HashMap<>();
+    private final Map<Integer, Integer> snapBaseQtys  = new HashMap<>();
     private volatile boolean haveSnapBaseline = false;
 
     private static int clamp(int v) { return Math.max(0, Math.min(255, v)); }
@@ -185,6 +186,7 @@ public class BankStatsPanel extends PluginPanel
         });
     }
 
+
     private void recomputeNetFromRememberedSnapshot() {
         if (!haveSnapBaseline || snapBaseHighs.isEmpty()) {
             return;
@@ -215,25 +217,30 @@ public class BankStatsPanel extends PluginPanel
                 long grand = 0L;
 
                 for (int id : ids) {
-                    final Integer snap = snapBaseHighs.get(id);
-                    final Integer cur  = latestMap.get(id);
-                    if (snap == null || cur == null) {
+                    final Integer snapPrice = snapBaseHighs.get(id);
+                    final Integer curPrice  = latestMap.get(id);
+                    if (snapPrice == null || curPrice == null) {
                         continue;
                     }
 
-                    final Double pct = (snap != 0) ? ((cur - snap) / (double) snap) : null;
+                    final int snapQty = snapBaseQtys.getOrDefault(id, 0);
+                    final int curQty  = idToQty.getOrDefault(id, 0);
 
-                    final Integer qty = idToQty.get(id);
+                    // Price-based % change (per unit), unchanged
+                    final Double pct = (snapPrice != 0)
+                            ? (curPrice - snapPrice) / (double) snapPrice
+                            : null;
 
-                    Integer net = null;
-                    if (qty != null) {
-                        long v = (long) qty * (long) (cur - snap);
-                        if      (v > Integer.MAX_VALUE) net = Integer.MAX_VALUE;
-                        else if (v < Integer.MIN_VALUE) net = Integer.MIN_VALUE;
-                        else                             net = (int) v;
+                    long snapshotWealth = (long) snapQty * (long) snapPrice;
+                    long currentWealth  = (long) curQty  * (long) curPrice;
+                    long netLong        = currentWealth - snapshotWealth;
 
-                        grand += (net != null ? net : 0);
-                    }
+                    Integer net;
+                    if      (netLong > Integer.MAX_VALUE) net = Integer.MAX_VALUE;
+                    else if (netLong < Integer.MIN_VALUE) net = Integer.MIN_VALUE;
+                    else                                  net = (int) netLong;
+
+                    grand += netLong;
 
                     final String name = snapBaseNames.getOrDefault(id, "Item " + id);
                     snapshotModel.addRow(new Object[]{ name, net, pct, null });
@@ -248,11 +255,10 @@ public class BankStatsPanel extends PluginPanel
 
                 refreshNetSummaryBox();
 
-                setStatus("Net recomputed using bank quantities.");
+                setStatus("Net recomputed using snapshot quantities and current bank.");
             });
         });
     }
-
     private static final java.text.DecimalFormat PCT_FMT = new java.text.DecimalFormat("0.0%");
 
     private static void applyZebra(Component cell, JTable table, int row) {
@@ -411,7 +417,45 @@ public class BankStatsPanel extends PluginPanel
 
     private Integer snapshotGrandTotal = null;
 
+    // Treat coins and platinum tokens as bank wealth when computing grand totals.
+    // These are the canonical OSRS item IDs:
+    private static final int ITEM_ID_COINS = 995;
+    private static final int ITEM_ID_PLATINUM_TOKEN = 13204;
+    private static final int PLATINUM_TOKEN_VALUE = 1000;
+
+    /**
+     * Compute the total GP value of all coins and platinum tokens present
+     * in the given id→qty map. All other items are ignored.
+     *
+     * - 1 coin  = 1 gp
+     * - 1 token = 1000 gp
+     */
+    private static long computeCoinAndTokenWealth(Map<Integer, Integer> idToQty)
+    {
+        if (idToQty == null || idToQty.isEmpty())
+        {
+            return 0L;
+        }
+
+        long total = 0L;
+
+        Integer coins = idToQty.get(ITEM_ID_COINS);
+        if (coins != null && coins > 0)
+        {
+            total += coins.longValue(); // 1 gp per coin
+        }
+
+        Integer tokens = idToQty.get(ITEM_ID_PLATINUM_TOKEN);
+        if (tokens != null && tokens > 0)
+        {
+            total += tokens.longValue() * (long) PLATINUM_TOKEN_VALUE; // 1000 gp per token
+        }
+
+        return total;
+    }
+
     private java.util.List<BankStatsPlugin.Row> backingRows = new ArrayList<>();
+
 
     private void updateFilters()
     {
@@ -440,36 +484,50 @@ public class BankStatsPanel extends PluginPanel
 
         java.util.Map<Integer, String> idToName = new java.util.HashMap<>();
         java.util.Map<Integer, Integer> idToSnap = new java.util.HashMap<>();
+        java.util.Map<Integer, Integer> idToSnapQty = new java.util.HashMap<>();
         java.util.Set<Integer> ids = new java.util.LinkedHashSet<>();
 
         try (java.io.BufferedReader br = java.nio.file.Files.newBufferedReader(file, java.nio.charset.StandardCharsets.UTF_8)) {
-            String line = br.readLine();
+            String line = br.readLine(); // skip header
             while ((line = br.readLine()) != null) {
-                String[] parts = line.split(",", 3);
-                if (parts.length < 3) continue;
+                // Expect: id,name,currentHigh,qty
+                String[] parts = line.split(",", -1);
+                if (parts.length < 4) {
+                    continue;
+                }
+
                 try {
-                    int id = Integer.parseInt(parts[0].trim());
-                    String name = parts[1].trim();
-                    int snap = Integer.parseInt(parts[2].trim());
+                    int id       = Integer.parseInt(parts[0].trim());
+                    String name  = parts[1].trim();
+                    int snap     = Integer.parseInt(parts[2].trim());
+                    int snapQty  = Integer.parseInt(parts[3].trim());
+
                     ids.add(id);
                     idToName.put(id, name);
                     idToSnap.put(id, snap);
-                } catch (NumberFormatException ignored) {
+                    idToSnapQty.put(id, snapQty);
+                }
+                catch (NumberFormatException ignored) {
                 }
             }
-        } catch (IOException ex) {
+        }
+        catch (IOException ex) {
             setStatus("Import failed: " + ex.getMessage());
             return;
         }
 
         snapBaseHighs.clear();
         snapBaseHighs.putAll(idToSnap);
+
         snapBaseNames.clear();
         for (Map.Entry<Integer, String> e : idToName.entrySet()) {
             snapBaseNames.put(e.getKey(), e.getValue());
         }
-        haveSnapBaseline = true;
 
+        snapBaseQtys.clear();
+        snapBaseQtys.putAll(idToSnapQty);
+
+        haveSnapBaseline = true;
         if (ids.isEmpty()) {
             setStatus("Snapshot file was empty.");
             return;
@@ -480,44 +538,64 @@ public class BankStatsPanel extends PluginPanel
         plugin.fetchLatestForIdsAsync(ids, latestMap -> {
             snapshotModel.setRowCount(0);
 
+            // Current bank quantities
             java.util.Map<Integer, Integer> idToQty = new java.util.HashMap<>();
             if (backingRows != null) {
                 for (com.bankstats.BankStatsPlugin.Row r : backingRows) {
-                    if (r != null && r.qty != null && r.qty > 0) idToQty.put(r.id, r.qty);
+                    if (r != null && r.qty != null && r.qty > 0) {
+                        idToQty.put(r.id, r.qty);
+                    }
                 }
             }
 
-            if (backingRows == null || backingRows.isEmpty()) {
+            // If the user hasn't run "Update from bank" yet, we won't compute Net;
+            // we keep the old behaviour: show only price-based % changes.
+            final boolean haveCurrentBank = !idToQty.isEmpty();
+            if (!haveCurrentBank) {
                 setStatus("Snapshot imported. Run 'Update from bank' to compute Net with quantities.");
             }
 
             long grand = 0L;
 
             for (int id : ids) {
-                Integer snap = idToSnap.get(id);
-                Integer cur  = latestMap.get(id);
-                if (snap == null || cur == null) continue;
-
-                int perUnitDelta = cur - snap;
-                Double pct = (snap != 0) ? ((cur - snap) / (double) snap) : null;
-
-                Integer qty = idToQty.get(id);
-                Integer net = null;
-                if (qty != null) {
-                    long v = (long) qty * (long) perUnitDelta;
-                    if      (v > Integer.MAX_VALUE) net = Integer.MAX_VALUE;
-                    else if (v < Integer.MIN_VALUE) net = Integer.MIN_VALUE;
-                    else                             net = (int) v;
+                Integer snapPrice = idToSnap.get(id);
+                Integer curPrice  = latestMap.get(id);
+                if (snapPrice == null || curPrice == null) {
+                    continue;
                 }
-                if (net != null) grand += net;
+
+                int snapQty = idToSnapQty.getOrDefault(id, 0);
+                int curQty  = idToQty.getOrDefault(id, 0);
+
+                // Price-based % change (per unit), same as before
+                Double pct = (snapPrice != 0)
+                        ? (curPrice - snapPrice) / (double) snapPrice
+                        : null;
+
+                Integer net = null;
+                if (haveCurrentBank) {
+                    long snapshotWealth = (long) snapQty * (long) snapPrice;
+                    long currentWealth  = (long) curQty  * (long) curPrice;
+                    long netLong        = currentWealth - snapshotWealth;
+
+                    if      (netLong > Integer.MAX_VALUE) net = Integer.MAX_VALUE;
+                    else if (netLong < Integer.MIN_VALUE) net = Integer.MIN_VALUE;
+                    else                                  net = (int) netLong;
+
+                    grand += netLong;
+                }
 
                 String name = idToName.getOrDefault(id, "Item " + id);
                 snapshotModel.addRow(new Object[]{ name, net, pct, null });
             }
 
-            if      (grand > Integer.MAX_VALUE) snapshotGrandTotal = Integer.MAX_VALUE;
-            else if (grand < Integer.MIN_VALUE) snapshotGrandTotal = Integer.MIN_VALUE;
-            else                                snapshotGrandTotal = (int) grand;
+            if (!haveCurrentBank) {
+                snapshotGrandTotal = null;
+            } else {
+                if      (grand > Integer.MAX_VALUE) snapshotGrandTotal = Integer.MAX_VALUE;
+                else if (grand < Integer.MIN_VALUE) snapshotGrandTotal = Integer.MIN_VALUE;
+                else                                snapshotGrandTotal = (int) grand;
+            }
 
             setStatus("Import complete");
 
@@ -526,6 +604,7 @@ public class BankStatsPanel extends PluginPanel
 
             refreshNetSummaryBox();
         });
+
     }
 
     private void refreshFromLastSnapshot() {
@@ -566,13 +645,21 @@ public class BankStatsPanel extends PluginPanel
 
             try (BufferedWriter w = Files.newBufferedWriter(file, StandardCharsets.UTF_8))
             {
-                w.write("id,name,currentHigh"); w.newLine();
+                // Now also store quantity at snapshot time
+                w.write("id,name,currentHigh,qty");
+                w.newLine();
+
                 for (BankStatsPlugin.Row r : backingRows)
                 {
                     if (r.currentHigh == null) continue;
-                    w.write(Integer.toString(r.id)); w.write(",");
-                    w.write(r.name == null ? "" : r.name); w.write(",");
+
+                    w.write(Integer.toString(r.id));
+                    w.write(",");
+                    w.write(r.name == null ? "" : r.name);
+                    w.write(",");
                     w.write(Integer.toString(r.currentHigh));
+                    w.write(",");
+                    w.write(r.qty == null ? "0" : r.qty.toString());
                     w.newLine();
                 }
             }
@@ -618,14 +705,22 @@ public class BankStatsPanel extends PluginPanel
 
         int written = 0;
         try (BufferedWriter w = Files.newBufferedWriter(path, StandardCharsets.UTF_8)) {
-            w.write("id,name,currentHigh");
+            // Same format as default snapshot: include qty
+            w.write("id,name,currentHigh,qty");
             w.newLine();
+
             for (com.bankstats.BankStatsPlugin.Row r : backingRows) {
                 if (r.currentHigh == null) continue;
-                w.write(Integer.toString(r.id)); w.write(",");
-                w.write(r.name == null ? "" : r.name); w.write(",");
+
+                w.write(Integer.toString(r.id));
+                w.write(",");
+                w.write(r.name == null ? "" : r.name);
+                w.write(",");
                 w.write(Integer.toString(r.currentHigh));
+                w.write(",");
+                w.write(r.qty == null ? "0" : r.qty.toString());
                 w.newLine();
+
                 written++;
             }
         } catch (IOException ex) {
@@ -1304,9 +1399,9 @@ public class BankStatsPanel extends PluginPanel
                 int mCol = snapshotTable.convertColumnIndexToModel(vCol);
                 switch (mCol) {
                     case 0: return "Item name";
-                    case 1: return "Net Gain or Loss = qty × (current − snapshot)";
+                    case 1: return "Net Gain or Loss = (currentQty × currentPrice) − (snapshotQty × snapshotPrice)";
                     case 2: return "Percentage Change = (current − snapshot) / snapshot";
-                    case 3: return "Total Net = Σ over all rows of [qty × (current − snapshot)] "
+                    case 3: return "Total Net = Σ over all rows of [(currentQty × currentPrice) − (snapshotQty × snapshotPrice)] "
                             + "(only one cell is populated)";
                     default: return null;
                 }
@@ -1965,11 +2060,11 @@ public class BankStatsPanel extends PluginPanel
                     case 0:
                         return "Item name";
                     case 1:
-                        return "Net Gain or Loss = qty × (current − snapshot)";
+                        return "Net Gain or Loss = (currentQty × currentPrice) − (snapshotQty × snapshotPrice)";
                     case 2:
-                        return "Percentage Change = (current − snapshot) / snapshot";
+                        return "Percentage Change = (currentPrice − snapshotPrice) / snapshotPrice";
                     case 3:
-                        return "Total Net = Σ over all rows of [qty × (current − snapshot)] "
+                        return "Total Net = Σ over all rows of [(currentQty × currentPrice) − (snapshotQty × snapshotPrice)] "
                                 + "(only one cell is populated)";
                     default:
                         return null;

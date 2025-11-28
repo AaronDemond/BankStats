@@ -61,6 +61,11 @@ public class BankStatsPlugin extends Plugin
     private static final String UA = "BankStats/1.0 (contact: Charles.Demond@smu.ca)";
     private static final String LATEST_URL = "https://prices.runescape.wiki/api/v1/osrs/latest?id=";
     private static final String TIMESERIES_URL = "https://prices.runescape.wiki/api/v1/osrs/timeseries?timestep=24h&id=";
+    // Treat coins and platinum tokens specially – they don't have wiki prices.
+    private static final int ITEM_ID_COINS = 995;
+    private static final int ITEM_ID_PLATINUM_TOKEN = 13204;
+    private static final int PLATINUM_TOKEN_VALUE = 1000; // 1000 gp per token
+
 
     public void fetchLatestForIdsAsync(java.util.Set<Integer> ids,
                                        java.util.function.Consumer<java.util.Map<Integer, Integer>> onDone)
@@ -256,6 +261,11 @@ public class BankStatsPlugin extends Plugin
                     Integer weekHigh6mo = null;
                     Integer weekLow6mo = null;
 
+                    // Special flags for coins / tokens
+                    final boolean isCoins  = (fid == ITEM_ID_COINS);
+                    final boolean isTokens = (fid == ITEM_ID_PLATINUM_TOKEN);
+                    final boolean isCoinOrToken = isCoins || isTokens;
+
                     try
                     {
                         // Fetch timeseries stats for this item
@@ -311,8 +321,34 @@ public class BankStatsPlugin extends Plugin
                     {
                     }
 
-                    // Skip items with no valid data
-                    if (currentHigh == null && weekLow == null && weekHigh == null)
+                    // --- SPECIAL CASE: coins and platinum tokens ---
+                    // Wiki often has no price/timeseries for these, so we synthesize a price
+                    // and make sure they are *not* filtered out.
+
+                    if (isCoinOrToken)
+                    {
+                        // Synthetic per-unit price if /latest didn't return one
+                        if (currentHigh == null)
+                        {
+                            currentHigh = isCoins ? 1 : PLATINUM_TOKEN_VALUE;
+                        }
+
+                        // Use the same value for currentLow if it's missing
+                        if (currentLow == null)
+                        {
+                            currentLow = currentHigh;
+                        }
+
+                        // For these, we don't have meaningful weekLow/weekHigh from timeseries;
+                        // use the synthetic value so gainLoss term is zero (no price drift).
+                        if (weekLow == null)  weekLow  = currentHigh;
+                        if (weekHigh == null) weekHigh = currentHigh;
+
+                        // We intentionally leave vol/dist fields null.
+                    }
+
+                    // Skip items with no valid data, *except* coins / tokens
+                    if (!isCoinOrToken && currentHigh == null && weekLow == null && weekHigh == null)
                     {
                         return null;
                     }
