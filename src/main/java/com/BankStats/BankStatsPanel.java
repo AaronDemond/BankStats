@@ -1,4 +1,7 @@
 package com.bankstats;
+import java.nio.charset.StandardCharsets;
+import java.io.BufferedReader;
+import java.nio.file.Files;
 import java.nio.file.DirectoryStream;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.text.SimpleDateFormat;
@@ -487,15 +490,19 @@ public class BankStatsPanel extends PluginPanel
         java.util.Map<Integer, Integer> idToSnapQty = new java.util.HashMap<>();
         java.util.Set<Integer> ids = new java.util.LinkedHashSet<>();
 
-        try (java.io.BufferedReader br = java.nio.file.Files.newBufferedReader(file, java.nio.charset.StandardCharsets.UTF_8)) {
-            String line = br.readLine(); // skip header
+        // Open reader to for importing snapshots
+        try (BufferedReader br = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+
+            String line = br.readLine(); // Skip first line
             while ((line = br.readLine()) != null) {
+
                 // Expect: id,name,currentHigh,qty
                 String[] parts = line.split(",", -1);
                 if (parts.length < 4) {
                     continue;
                 }
 
+                // Populate maps
                 try {
                     int id       = Integer.parseInt(parts[0].trim());
                     String name  = parts[1].trim();
@@ -785,12 +792,12 @@ public class BankStatsPanel extends PluginPanel
             case 9:  return "True 6-month high: highest recorded price in the last ~180 days";
             case 10:  return "Vol 7d: how much the price has bounced around over the last 7 days";
             case 11: return "Vol 30d: how much the price has bounced around over the last 30 days";
-            case 12: return "% from 7d Low: how far the current price is above the 7-day low";
-            case 13: return "% below 7d High: how far the current price is below the 7-day high";
-            case 14: return "% from 30d Low: how far the current price is above the 30-day low";
-            case 15: return "% below 30d High: how far the current price is below the 30-day high";
-            case 16: return "% from 6mo Low: how far the current price is above the 6-month low";
-            case 17: return "% below 6mo High: how far the current price is below the 6-month high";
+            case 12: return "% from 7d Low: higher values mean item is trading higher than the low";
+            case 13: return "% below 7d High: higher values mean the item has fallen significantly from its high";
+            case 14: return "% from 30d Low: higher values mean item is trading higher than the low";
+            case 15: return "% below 30d High: higher values mean the item has fallen significantly from its high";
+            case 16: return "% from 6mo Low: higher values mean item is trading higher than the low";
+            case 17: return "% below 6mo High: higher values mean the item has fallen significantly from its high";
 
             default: return null;
         }

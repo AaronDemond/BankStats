@@ -43,17 +43,20 @@ import java.util.LinkedHashSet;
 public class BankStatsPlugin extends Plugin
 {
 
-    private static final Logger log = LoggerFactory.getLogger(BankStatsPlugin.class);
+    //region Injects
     @Inject private Client client;
     @Inject private ClientThread clientThread;
     @Inject private ClientToolbar clientToolbar;
     @Inject private ItemManager itemManager;
     @Inject private Gson gson;
     @Inject private OkHttpClient okHttpClient;
+    //endregion
 
-    private AlertManager alertManager;  // Add this line
+    //region private variables
+    private AlertManager alertManager;
     private NavigationButton navButton;
     private com.bankstats.BankStatsPanel panel;
+    private static final Logger log = LoggerFactory.getLogger(BankStatsPlugin.class);
     public AlertManager getAlertManager() {
         return alertManager;
     }
@@ -62,10 +65,11 @@ public class BankStatsPlugin extends Plugin
     private static final String UA = "BankStats/1.0 (contact: Charles.Demond@smu.ca)";
     private static final String LATEST_URL = "https://prices.runescape.wiki/api/v1/osrs/latest?id=";
     private static final String TIMESERIES_URL = "https://prices.runescape.wiki/api/v1/osrs/timeseries?timestep=24h&id=";
-    // Treat coins and platinum tokens specially – they don't have wiki prices.
     private static final int ITEM_ID_COINS = 995;
     private static final int ITEM_ID_PLATINUM_TOKEN = 13204;
-    private static final int PLATINUM_TOKEN_VALUE = 1000; // 1000 gp per token
+    private static final int PLATINUM_TOKEN_VALUE = 1000;
+    //endregion
+
 
 
     public void fetchLatestForIdsAsync(java.util.Set<Integer> ids,
