@@ -6,19 +6,18 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.text.SimpleDateFormat;
 import net.runelite.client.ui.PluginPanel;
-import java.util.Map;
-import java.util.HashMap;
+
+import java.util.*;
 import javax.swing.table.*;
 import javax.swing.*;
 import java.awt.*;
 import java.text.NumberFormat;
-import java.util.List;
-import java.util.Locale;
 import java.awt.event.MouseEvent;
 import javax.swing.ScrollPaneConstants;
-import java.util.Comparator;
 import javax.swing.SwingConstants;
 import javax.swing.RowFilter;
+import java.util.List;
+import java.util.concurrent.*;
 import java.util.regex.Pattern;
 import javax.swing.JFileChooser;
 import java.io.BufferedWriter;
@@ -28,7 +27,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
 import java.nio.file.Paths;
 import java.awt.image.BufferedImage;
 import javax.swing.ImageIcon;
@@ -73,6 +71,10 @@ public class BankStatsPanel extends PluginPanel
     private JDialog gainLossDlg;
     final Insets tight = new Insets(2, 8, 2, 8);
 
+    private static final int CONCURRENCY = 24;
+    private final ExecutorService executor = Executors.newFixedThreadPool(CONCURRENCY);
+
+    public java.util.List<BankStatsPlugin.Row> snapRows;
 
 
 
@@ -200,8 +202,12 @@ public class BankStatsPanel extends PluginPanel
 
         final Map<Integer, Integer> idToQty = new HashMap<>();
         for (BankStatsPlugin.Row r : backingRows) {
-            if (r != null && r.qty != null && r.qty > 0) {
-                idToQty.put(r.id, r.qty);
+            if (r != null) {
+                if (r.qty == null){
+                    idToQty.put(r.id, 0);
+                } else {
+                    idToQty.put(r.id, r.qty);
+                }
             }
         }
 
@@ -527,9 +533,7 @@ public class BankStatsPanel extends PluginPanel
         snapBaseHighs.putAll(idToSnap);
 
         snapBaseNames.clear();
-        for (Map.Entry<Integer, String> e : idToName.entrySet()) {
-            snapBaseNames.put(e.getKey(), e.getValue());
-        }
+        snapBaseNames.putAll(idToName);
 
         snapBaseQtys.clear();
         snapBaseQtys.putAll(idToSnapQty);
@@ -545,12 +549,16 @@ public class BankStatsPanel extends PluginPanel
         plugin.fetchLatestForIdsAsync(ids, latestMap -> {
             snapshotModel.setRowCount(0);
 
-            // Current bank quantities
+            // Fill idToQty with ids and quantities
             java.util.Map<Integer, Integer> idToQty = new java.util.HashMap<>();
             if (backingRows != null) {
-                for (com.bankstats.BankStatsPlugin.Row r : backingRows) {
-                    if (r != null && r.qty != null && r.qty > 0) {
-                        idToQty.put(r.id, r.qty);
+                for (BankStatsPlugin.Row r : backingRows) {
+                    if (r != null) {
+                        if (r.qty == null){
+                            idToQty.put(r.id, 0);
+                        } else {
+                            idToQty.put(r.id, r.qty);
+                        }
                     }
                 }
             }
@@ -559,59 +567,246 @@ public class BankStatsPanel extends PluginPanel
             // we keep the old behaviour: show only price-based % changes.
             final boolean haveCurrentBank = !idToQty.isEmpty();
             if (!haveCurrentBank) {
-                setStatus("Snapshot imported. Run 'Update from bank' to compute Net with quantities.");
-            }
-
-            long grand = 0L;
-
-            for (int id : ids) {
-                Integer snapPrice = idToSnap.get(id);
-                Integer curPrice  = latestMap.get(id);
-                if (snapPrice == null || curPrice == null) {
-                    continue;
-                }
-
-                int snapQty = idToSnapQty.getOrDefault(id, 0);
-                int curQty  = idToQty.getOrDefault(id, 0);
-
-                // Price-based % change (per unit), same as before
-                Double pct = (snapPrice != 0)
-                        ? (curPrice - snapPrice) / (double) snapPrice
-                        : null;
-
-                Integer net = null;
-                if (haveCurrentBank) {
-                    long snapshotWealth = (long) snapQty * (long) snapPrice;
-                    long currentWealth  = (long) curQty  * (long) curPrice;
-                    long netLong        = currentWealth - snapshotWealth;
-
-                    if      (netLong > Integer.MAX_VALUE) net = Integer.MAX_VALUE;
-                    else if (netLong < Integer.MIN_VALUE) net = Integer.MIN_VALUE;
-                    else                                  net = (int) netLong;
-
-                    grand += netLong;
-                }
-
-                String name = idToName.getOrDefault(id, "Item " + id);
-                snapshotModel.addRow(new Object[]{ name, net, pct, null });
-            }
-
-            if (!haveCurrentBank) {
-                snapshotGrandTotal = null;
+                setStatus("Snapshot imported.");
             } else {
-                if      (grand > Integer.MAX_VALUE) snapshotGrandTotal = Integer.MAX_VALUE;
-                else if (grand < Integer.MIN_VALUE) snapshotGrandTotal = Integer.MIN_VALUE;
-                else                                snapshotGrandTotal = (int) grand;
+                long grand = 0L;
+
+                for (int id : ids) {
+                    Integer snapPrice = idToSnap.get(id);
+                    Integer curPrice  = latestMap.get(id);
+                    if (snapPrice == null || curPrice == null) {
+                        continue;
+                    }
+
+                    int snapQty = idToSnapQty.getOrDefault(id, 0);
+                    int curQty  = idToQty.getOrDefault(id, 0);
+
+                    // Price-based % change (per unit), same as before
+                    Double pct = (snapPrice != 0)
+                            ? (curPrice - snapPrice) / (double) snapPrice
+                            : null;
+
+                    Integer net = null;
+                    if (true) {
+                        long snapshotWealth = (long) snapQty * (long) snapPrice;
+                        long currentWealth  = (long) curQty  * (long) curPrice;
+                        long netLong        = currentWealth - snapshotWealth;
+
+                        if      (netLong > Integer.MAX_VALUE) net = Integer.MAX_VALUE;
+                        else if (netLong < Integer.MIN_VALUE) net = Integer.MIN_VALUE;
+                        else                                  net = (int) netLong;
+
+                        grand += netLong;
+                    }
+
+                    String name = idToName.getOrDefault(id, "Item " + id);
+                    snapshotModel.addRow(new Object[]{ name, net, pct, null });
+
+                    if (!haveCurrentBank) {
+                        snapshotGrandTotal = null;
+                    } else {
+                        if      (grand > Integer.MAX_VALUE) snapshotGrandTotal = Integer.MAX_VALUE;
+                        else if (grand < Integer.MIN_VALUE) snapshotGrandTotal = Integer.MIN_VALUE;
+                        else                                snapshotGrandTotal = (int) grand;
+                    }
+
+                    snapshotTable.repaint();
+                    if (myItemsDlg != null && myItemsDlg.isShowing()) myItemsDlg.repaint();
+
+                    refreshNetSummaryBox();
+                }
             }
-
             setStatus("Import complete");
-
-            snapshotTable.repaint();
-            if (myItemsDlg != null && myItemsDlg.isShowing()) myItemsDlg.repaint();
-
-            refreshNetSummaryBox();
         });
 
+
+        executor.submit(() -> {
+            Map<Integer, Integer> latest;
+            try {
+                latest = plugin.fetchLatestBulk(ids);
+            } catch (IOException e) {
+                System.out.println(e);
+                return;
+            }
+
+            CompletionService<BankStatsPlugin.Row> cs = new ExecutorCompletionService<>(executor);
+            int submitted = 0;
+            for (int _id : ids)
+            {
+                final int fid = _id;
+                final int qty = snapBaseQtys.getOrDefault(fid, 0);
+                cs.submit(() -> {
+                    Integer currentHigh = latest.get(fid);
+                    Integer currentLow = null;
+                    Integer weekLow = null;
+                    Integer weekHigh = null;
+
+                    Double vol7 = null;
+                    Double vol30 = null;
+                    Double distLowPct = null;
+                    Double distHighPct = null;
+                    Double distLow30Pct = null;
+                    Double distHigh30Pct = null;
+                    Double distLow180Pct = null;
+                    Double distHigh180Pct = null;
+
+                    // --- NEW variables for the extended columns ---
+                    Integer weekHigh7d = null;
+                    Integer weekLow7d = null;
+                    Integer weekHigh30d = null;
+                    Integer weekLow30d = null;
+                    Integer weekHigh6mo = null;
+                    Integer weekLow6mo = null;
+
+                    // Special flags for coins / tokens
+                    final boolean isCoins  = (fid == ITEM_ID_COINS);
+                    final boolean isTokens = (fid == ITEM_ID_PLATINUM_TOKEN);
+                    final boolean isCoinOrToken = isCoins || isTokens;
+
+                    try
+                    {
+                        // Fetch timeseries stats for this item
+                        BankStatsPlugin.SeriesStats s = plugin.fetchWeekStatsWithRetry(fid);
+
+                        currentLow = s.minLow;
+
+                        // Use true lows/highs for all visible columns.
+                        // WeekLow/WeekHigh are just the 7-day true extremes.
+                        weekLow  = s.trueLow7  != null ? s.trueLow7  : s.minLow;
+                        weekHigh = s.trueHigh7 != null ? s.trueHigh7 : s.maxHigh;
+
+                        // Extended-period extremes – always absolute highs/lows
+                        weekHigh7d  = s.trueHigh7;   // 7d High
+                        weekLow7d   = s.trueLow7;    // 7d Low
+                        weekHigh30d = s.trueHigh30;  // 30d High
+                        weekLow30d  = s.trueLow30;   // 30d Low
+                        weekHigh6mo = s.trueHigh180; // 6mo High
+                        weekLow6mo  = s.trueLow180;  // 6mo Low
+
+                        if (currentHigh != null && s.minMid7 != null && s.minMid7 > 0)
+                        {
+                            distLowPct = (currentHigh - s.minMid7) / (double) s.minMid7;
+                        }
+                        if (currentHigh != null && s.maxMid7 != null && s.maxMid7 > 0)
+                        {
+                            distHighPct = (s.maxMid7 - currentHigh) / (double) s.maxMid7;
+                        }
+
+                        if (currentHigh != null && s.minMid30 != null && s.minMid30 > 0)
+                        {
+                            distLow30Pct = (currentHigh - s.minMid30) / (double) s.minMid30;
+                        }
+                        if (currentHigh != null && s.maxMid30 != null && s.maxMid30 > 0)
+                        {
+                            distHigh30Pct = (s.maxMid30 - currentHigh) / (double) s.maxMid30;
+                        }
+
+                        // ▼ NEW: 6-month (180d) distances ▼
+                        if (currentHigh != null && s.minMid180 != null && s.minMid180 > 0)
+                        {
+                            distLow180Pct = (currentHigh - s.minMid180) / (double) s.minMid180;
+                        }
+                        if (currentHigh != null && s.maxMid180 != null && s.maxMid180 > 0)
+                        {
+                            distHigh180Pct = (s.maxMid180 - currentHigh) / (double) s.maxMid180;
+                        }
+
+                        vol7  = s.vol7;
+                        vol30 = s.vol30;
+                    }
+                    catch (IOException ignored)
+                    {
+                    }
+
+                    // --- SPECIAL CASE: coins and platinum tokens ---
+                    // Wiki often has no price/timeseries for these, so we synthesize a price
+                    // and make sure they are *not* filtered out.
+
+                    if (isCoinOrToken)
+                    {
+                        // Synthetic per-unit price if /latest didn't return one
+                        if (currentHigh == null)
+                        {
+                            currentHigh = isCoins ? 1 : PLATINUM_TOKEN_VALUE;
+                        }
+
+                        // Use the same value for currentLow if it's missing
+                        if (currentLow == null)
+                        {
+                            currentLow = currentHigh;
+                        }
+
+                        // For these, we don't have meaningful weekLow/weekHigh from timeseries;
+                        // use the synthetic value so gainLoss term is zero (no price drift).
+                        if (weekLow == null)  weekLow  = currentHigh;
+                        if (weekHigh == null) weekHigh = currentHigh;
+
+                        // We intentionally leave vol/dist fields null.
+                    }
+
+                    // Skip items with no valid data, *except* coins / tokens
+                    if (!isCoinOrToken && currentHigh == null && weekLow == null && weekHigh == null)
+                    {
+                        return null;
+                    }
+
+                    // --- Build Row with extended historical columns ---
+                    return new BankStatsPlugin.Row(
+                            fid,
+                            snapBaseNames.get(fid),
+                            qty,
+                            currentHigh,
+                            currentLow,
+                            weekLow,
+                            weekHigh,
+
+                            // NEW extended fields
+                            weekHigh7d,  // 7d High
+                            weekLow7d,   // 7d Low
+                            weekHigh30d, // 30d High
+                            weekLow30d,  // 30d Low
+                            weekHigh6mo, // 6mo High
+                            weekLow6mo,  // 6mo Low
+
+                            vol7,
+                            vol30,
+                            distLowPct,
+                            distHighPct,
+                            distLow30Pct,
+                            distHigh30Pct,
+                            distLow180Pct,
+                            distHigh180Pct
+                    );
+                });
+                submitted++;
+            }
+            List<BankStatsPlugin.Row> rows = new ArrayList<>(ids.size());
+            for (int i = 0; i < submitted; i++)
+            {
+                try
+                {
+                    Future<BankStatsPlugin.Row> f = cs.take();
+                    BankStatsPlugin.Row r = f.get();
+                    if (r != null) rows.add(r);
+                }
+                catch (InterruptedException ie)
+                {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+                catch (Exception ignored)
+                {
+                }
+
+                if ((i + 1) % 20 == 0 || (i + 1) == submitted)
+                {
+                    setStatus("Repopulating: " + (i + 1) + " / " + submitted);
+                }
+
+            }
+            setDetailTableData(rows);
+            this.snapRows = rows;
+        });
     }
 
     private void refreshFromLastSnapshot() {
@@ -1240,7 +1435,7 @@ public class BankStatsPanel extends PluginPanel
                     .setCellRenderer(gpRenderer);
         }
 
-        snapshotTable = new JTable(snapshotModel) {
+        this.snapshotTable = new JTable(snapshotModel) {
             @Override
             public String getToolTipText(MouseEvent e) {
                 Point p = e.getPoint();
@@ -1741,9 +1936,9 @@ public class BankStatsPanel extends PluginPanel
     public void setDetailTableData(List<BankStatsPlugin.Row> rows)
     {
         SwingUtilities.invokeLater(() -> {
+
             detailModel.setRowCount(0);
-            for (BankStatsPlugin.Row r : rows)
-            {
+            for (BankStatsPlugin.Row r : rows){
                 detailModel.addRow(new Object[]{
                         r.name,            // "Item"
                         r.qty,             // "Qty"
@@ -1772,6 +1967,8 @@ public class BankStatsPanel extends PluginPanel
 
                         //r.gainLoss         // "Gain / Loss"
                 });
+
+
             }
         });
     }

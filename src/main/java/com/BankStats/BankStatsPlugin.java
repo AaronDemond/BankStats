@@ -255,7 +255,34 @@ public class BankStatsPlugin extends Plugin
         Widget bank = client.getWidget(ComponentID.BANK_CONTAINER);
         return bank != null && !bank.isHidden();
     }
-
+    public void getRow(Set<Integer> ids) {
+        //return new Row(
+       //         fid,
+        //        names.getOrDefault(fid, "Item " + fid),
+         //       qty,
+          //      currentHigh,
+           //     currentLow,
+            //    weekLow,
+             //   weekHigh,
+//
+ //               // NEW extended fields
+  //              weekHigh7d,  // 7d High
+   //             weekLow7d,   // 7d Low
+    //            weekHigh30d, // 30d High
+     //           weekLow30d,  // 30d Low
+      //          weekHigh6mo, // 6mo High
+       //         weekLow6mo,  // 6mo Low
+//
+ //               vol7,
+  //              vol30,
+   //             distLowPct,
+    //            distHighPct,
+     //           distLow30Pct,
+      //          distHigh30Pct,
+       //         distLow180Pct,
+        //        distHigh180Pct
+        //);
+    }
     private void fetchAndDisplay(Set<Integer> ids, Map<Integer, String> names, Map<Integer, Integer> qtyMap)
     {
         try
@@ -482,7 +509,7 @@ public class BankStatsPlugin extends Plugin
     }
 
 
-    private SeriesStats fetchWeekStats(int id) throws IOException
+    public SeriesStats fetchWeekStats(int id) throws IOException
     {
         Request req = new Request.Builder()
                 .url(TIMESERIES_URL + id)
@@ -697,7 +724,7 @@ public class BankStatsPlugin extends Plugin
             return out;
         }
     }
-    private Map<Integer, Integer> fetchLatestBulk(Set<Integer> ids) throws IOException
+    public Map<Integer, Integer> fetchLatestBulk(Set<Integer> ids) throws IOException
     {
         Request req = new Request.Builder()
                 .url("https://prices.runescape.wiki/api/v1/osrs/latest")
@@ -732,7 +759,7 @@ public class BankStatsPlugin extends Plugin
     private static final int MAX_RETRIES_429 = 2;
     private static final long RETRY_SLEEP_MS = 800;
 
-    private SeriesStats fetchWeekStatsWithRetry(int id) throws IOException
+    public SeriesStats fetchWeekStatsWithRetry(int id) throws IOException
     {
         IOException last = null;
         for (int i = 0; i <= MAX_RETRIES_429; i++)
