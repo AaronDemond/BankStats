@@ -192,6 +192,7 @@ public class BankStatsPanel extends PluginPanel
     }
 
 
+
     private void recomputeNetFromRememberedSnapshot() {
         if (!haveSnapBaseline || snapBaseHighs.isEmpty()) {
             return;
@@ -200,14 +201,11 @@ public class BankStatsPanel extends PluginPanel
             return;
         }
 
+        // Build current-bank qty map
         final Map<Integer, Integer> idToQty = new HashMap<>();
         for (BankStatsPlugin.Row r : backingRows) {
             if (r != null) {
-                if (r.qty == null){
-                    idToQty.put(r.id, 0);
-                } else {
-                    idToQty.put(r.id, r.qty);
-                }
+                idToQty.put(r.id, (r.qty == null) ? 0 : r.qty);
             }
         }
 
@@ -216,7 +214,10 @@ public class BankStatsPanel extends PluginPanel
             return;
         }
 
+        // *** KEY CHANGE: union of snapshot IDs and current-bank IDs ***
         final java.util.Set<Integer> ids = new java.util.LinkedHashSet<>(snapBaseHighs.keySet());
+        ids.addAll(idToQty.keySet());
+
         setStatus("Recomputing Net vs snapshot…");
 
         plugin.fetchLatestForIdsAsync(ids, latestMap -> {
@@ -226,22 +227,29 @@ public class BankStatsPanel extends PluginPanel
                 long grand = 0L;
 
                 for (int id : ids) {
-                    final Integer snapPrice = snapBaseHighs.get(id);
-                    final Integer curPrice  = latestMap.get(id);
-                    if (snapPrice == null || curPrice == null) {
+                    final Integer snapPrice = snapBaseHighs.get(id);   // may be null
+                    final Integer curPrice  = latestMap.get(id);       // may be null
+
+                    // If we cannot price it now, skip
+                    if (curPrice == null) {
                         continue;
                     }
 
                     final int snapQty = snapBaseQtys.getOrDefault(id, 0);
                     final int curQty  = idToQty.getOrDefault(id, 0);
 
-                    // Price-based % change (per unit), unchanged
-                    final Double pct = (snapPrice != 0)
-                            ? (curPrice - snapPrice) / (double) snapPrice
-                            : null;
+                    // Only compute % change if we had a snapshot price
+                    Double pct = null;
+                    if (snapPrice != null && snapPrice != 0) {
+                        pct = (curPrice - snapPrice) / (double) snapPrice;
+                    }
 
-                    long snapshotWealth = (long) snapQty * (long) snapPrice;
-                    long currentWealth  = (long) curQty  * (long) curPrice;
+                    // If no snapshot price, treat snapshot wealth as 0
+                    long snapshotWealth = (snapPrice != null)
+                            ? (long) snapQty * (long) snapPrice
+                            : 0L;
+
+                    long currentWealth  = (long) curQty * (long) curPrice;
                     long netLong        = currentWealth - snapshotWealth;
 
                     Integer net;
@@ -544,78 +552,101 @@ public class BankStatsPanel extends PluginPanel
             return;
         }
 
-        setStatus("Importing " + ids.size() + " items...");
+        haveSnapBaseline = true;
+        if (ids.isEmpty()) {
+            setStatus("Snapshot file was empty.");
+            return;
+        }
 
-        plugin.fetchLatestForIdsAsync(ids, latestMap -> {
-            snapshotModel.setRowCount(0);
-
-            // Fill idToQty with ids and quantities
-            java.util.Map<Integer, Integer> idToQty = new java.util.HashMap<>();
-            if (backingRows != null) {
-                for (BankStatsPlugin.Row r : backingRows) {
-                    if (r != null) {
-                        if (r.qty == null){
-                            idToQty.put(r.id, 0);
-                        } else {
-                            idToQty.put(r.id, r.qty);
-                        }
-                    }
+// Build current-bank qty map once so we can use union of IDs
+        final Map<Integer, Integer> idToQty = new HashMap<>();
+        if (backingRows != null) {
+            for (BankStatsPlugin.Row r : backingRows) {
+                if (r != null) {
+                    idToQty.put(r.id, (r.qty == null) ? 0 : r.qty);
                 }
             }
+        }
+        final boolean haveCurrentBank = !idToQty.isEmpty();
 
-            // If the user hasn't run "Update from bank" yet, we won't compute Net;
-            // we keep the old behaviour: show only price-based % changes.
-            final boolean haveCurrentBank = !idToQty.isEmpty();
+// *** KEY CHANGE: union of snapshot IDs and current-bank IDs ***
+        final java.util.Set<Integer> allIds = new java.util.LinkedHashSet<>(ids);
+        allIds.addAll(idToQty.keySet());
+
+        setStatus("Importing " + allIds.size() + " items...");
+
+        plugin.fetchLatestForIdsAsync(allIds, latestMap -> {
+            snapshotModel.setRowCount(0);
+
             if (!haveCurrentBank) {
+                // Old behaviour: no current bank → don't compute Net
                 setStatus("Snapshot imported.");
             } else {
                 long grand = 0L;
 
-                for (int id : ids) {
-                    Integer snapPrice = idToSnap.get(id);
-                    Integer curPrice  = latestMap.get(id);
-                    if (snapPrice == null || curPrice == null) {
+                for (int id : allIds) {
+                    final Integer snapPrice = idToSnap.get(id);   // may be null
+                    final Integer curPrice  = latestMap.get(id);  // may be null
+
+                    // If no current price, we can't value it now
+                    if (curPrice == null) {
                         continue;
                     }
 
-                    int snapQty = idToSnapQty.getOrDefault(id, 0);
-                    int curQty  = idToQty.getOrDefault(id, 0);
+                    final int snapQty = idToSnapQty.getOrDefault(id, 0);
+                    final int curQty  = idToQty.getOrDefault(id, 0);
 
-                    // Price-based % change (per unit), same as before
-                    Double pct = (snapPrice != 0)
-                            ? (curPrice - snapPrice) / (double) snapPrice
-                            : null;
-
-                    Integer net = null;
-                    if (true) {
-                        long snapshotWealth = (long) snapQty * (long) snapPrice;
-                        long currentWealth  = (long) curQty  * (long) curPrice;
-                        long netLong        = currentWealth - snapshotWealth;
-
-                        if      (netLong > Integer.MAX_VALUE) net = Integer.MAX_VALUE;
-                        else if (netLong < Integer.MIN_VALUE) net = Integer.MIN_VALUE;
-                        else                                  net = (int) netLong;
-
-                        grand += netLong;
+                    // % change only if snapshot price existed
+                    Double pct = null;
+                    if (snapPrice != null && snapPrice != 0) {
+                        pct = (curPrice - snapPrice) / (double) snapPrice;
                     }
 
-                    String name = idToName.getOrDefault(id, "Item " + id);
+                    long snapshotWealth = (snapPrice != null)
+                            ? (long) snapQty * (long) snapPrice
+                            : 0L;
+
+                    long currentWealth  = (long) curQty * (long) curPrice;
+                    long netLong        = currentWealth - snapshotWealth;
+
+                    Integer net;
+                    if      (netLong > Integer.MAX_VALUE) net = Integer.MAX_VALUE;
+                    else if (netLong < Integer.MIN_VALUE) net = Integer.MIN_VALUE;
+                    else                                  net = (int) netLong;
+
+                    grand += netLong;
+
+                    String name = idToName.get(id);
+                    if (name == null && backingRows != null) {
+                        // Fallback: try to get the live bank name for new items
+                        for (BankStatsPlugin.Row r : backingRows) {
+                            if (r.id == id) {
+                                name = r.name;
+                                break;
+                            }
+                        }
+                    }
+                    if (name == null) {
+                        name = "Item " + id;
+                    }
+
                     snapshotModel.addRow(new Object[]{ name, net, pct, null });
-
-                    if (!haveCurrentBank) {
-                        snapshotGrandTotal = null;
-                    } else {
-                        if      (grand > Integer.MAX_VALUE) snapshotGrandTotal = Integer.MAX_VALUE;
-                        else if (grand < Integer.MIN_VALUE) snapshotGrandTotal = Integer.MIN_VALUE;
-                        else                                snapshotGrandTotal = (int) grand;
-                    }
-
-                    snapshotTable.repaint();
-                    if (myItemsDlg != null && myItemsDlg.isShowing()) myItemsDlg.repaint();
-
-                    refreshNetSummaryBox();
                 }
+
+                if (!haveCurrentBank) {
+                    snapshotGrandTotal = null;
+                } else {
+                    if      (grand > Integer.MAX_VALUE) snapshotGrandTotal = Integer.MAX_VALUE;
+                    else if (grand < Integer.MIN_VALUE) snapshotGrandTotal = Integer.MIN_VALUE;
+                    else                                snapshotGrandTotal = (int) grand;
+                }
+
+                snapshotTable.repaint();
+                if (myItemsDlg != null && myItemsDlg.isShowing()) myItemsDlg.repaint();
+
+                refreshNetSummaryBox();
             }
+
             setStatus("Import complete");
         });
 
