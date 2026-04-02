@@ -2,12 +2,12 @@
 
 ## <span style="color:#6F5E53">Features</span>
 
-- 📊 Monitors price changes of items in your bank over time.
-- 📈 Provides detailed statistics and trends for each item.
-- 💹 Quickly identify items that have increased or decreased in value, using sortable charts. 
-- 🔍 supports large, popup charts for greater detail and analysis.
-- 🕓 Track prices at any interval you choose - daily, weekly, hourly, Etc.
-- 💾 Stores any number of snapshots locally for later comparison.
+- Monitors price changes of items in your bank over time.
+- Provides detailed statistics and trends for each item.
+- Quickly identify items that have increased or decreased in value, using sortable charts. 
+- supports large, popup charts for greater detail and analysis.
+- Track prices at any interval you choose - daily, weekly, hourly, Etc.
+- Stores any number of snapshots locally for later comparison.
 
 ## <span style="color:#6F5E53">Usage (TL;DR at the bottom)</span>
 
