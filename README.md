@@ -1,4 +1,4 @@
-# <span style="color:#3A5F40">BankStats Plugin</span>
+# <span style="color:#3A5F40">BankStats OSRS Plugin</span>
 
 
 
