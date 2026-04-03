@@ -1,6 +1,14 @@
 # <span style="color:#3A5F40">BankStats Plugin</span>
 
+## <span style="color:#6F5E53">Demo</span>
+
+
+
+https://github.com/user-attachments/assets/063ebaa8-352f-451c-889f-de1525d5d4e3
+
+
 ## <span style="color:#6F5E53">Features</span>
+
 
 - Monitors price changes of items in your bank over time.
 - Provides detailed statistics and trends for each item.
